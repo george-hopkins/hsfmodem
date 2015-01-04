@@ -1,3 +1,4 @@
 title: hsfmodem
 tag_text: hsfmodem
 description: hsfmodem provides Linux drivers for the Conexant (formerly Rockwell) HSF Softmodem family.
+baseurl: /hsfmodem
