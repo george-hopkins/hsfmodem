@@ -1,0 +1,6 @@
+@CNXTTARGET@modem (@CNXTLINUXVERSION@) unstable; urgency=low
+
+  * Built debian package.
+
+ -- Linuxant <modem.support@linuxant.com>  @DATE@
+

@@ -1,0 +1,151 @@
+Please see the README file for general information.
+
+BEFORE INSTALLING
+
+Remove any old HSF modem drivers, either manually or by
+running "rpm -e hsfmodem" or "make uninstall" if using the
+RPM or tar versions of this package respectively.
+
+Note: if you had an older version of this package, it might have been
+installed under the previous "hsflinmodem" name. In that case,
+run "rpm -e hsflinmodem" (or "make uninstall" in the *old* package tree).
+
+
+INSTALLATION INSTRUCTIONS
+
+If your Linux distribution supports the RPM Package Manager,
+it is easiest to install the binary RPM package with METHOD A.
+If your system is based on Debian (DPKG), METHOD B is for you.
+METHOD C is for distributions without RPM or DPKG support,
+or those who prefer not to use packages.
+
+If you obtained the driver as a ".zip" file, extract it
+first with "unzip <filename>.zip".
+
+
+METHOD A: BINARY RPM PACKAGE (*.{arch}.rpm)
+
+If you have obtained the driver package in RPM format:
+
+1. install the rpm with "rpm -i hsfmodem-{version}.{arch}.rpm"
+
+2. if necessary, run "hsfconfig" to complete the installation, or
+to change your modem's configuration.
+
+If you need to rebuild the binary RPM from source, you
+can get the TAR package and run: "rpmbuild -tb hsfmodem-{version}.tar.gz"
+(if rpmbuild is not found, you might have to install the rpm-build
+package or if you have an older RPM version, try "rpm --rebuild ...")
+
+
+METHOD B: DEBIAN PACKAGE (*.deb)
+
+If you have obtained the driver package in DEBIAN format:
+
+1. install the package with "dpkg -i hsfmodem_{version}_{arch}.deb",
+if apt-get or some other tool hasn't already done it for you.
+
+2. if necessary, run "hsfconfig" to complete the installation,
+or to change your modem's configuration.
+
+If you need to rebuild the Debian package from source, you can get
+the TAR package, and from the top directory run: "make debdist"
+
+
+METHOD C: TAR PACKAGE (*.tar.gz)
+
+If you have obtained the driver package in tar format:
+
+1. extract the package with "tar -xzf hsfmodem-{version}.tar.gz"
+
+2. change to the package directory with "cd hsfmodem-{version}"
+
+3. run "make install" from the top of the package directory.
+
+4. run "hsfconfig" to complete the installation and configure your modem.
+
+(Alternatively to this whole procedure you may generate RPMS from the tar
+package using rpmbuild -ta hsfmodem-{version}.tar.gz")
+
+
+AFTER INSTALLATION
+
+If an error occurred during installation, please see the sections 'BUGS'
+and 'REPORTING PROBLEMS' below.
+
+Once the modem is installed and configured, you may access it
+as /dev/ttySHSF0. Additionally, you can use it via the symbolic link
+/dev/modem (equivalent to ttySHSF0). If you have more than one HSF modem,
+the second will be available as /dev/ttySHSF1, the third as /dev/ttySHSF2
+and so forth.
+
+Please review the permissions on the device nodes with "ls -l" to ensure
+that they are adequate for your system.
+
+The "hsfconfig" command can be used to change certain modem configuration
+options or recompile (generic packages only) the kernel modules after
+installation.  Run "hsfconfig --help" for usage information.
+
+
+CHANGING REGIONAL SETTINGS
+
+With "hsfconfig --region" you may select another region (country) supported by
+the modem.
+
+
+MANUALLY UNLOADING THE DRIVERS
+
+The modem drivers can be manually unloaded using the "hsfstop" command.
+
+
+USING ALTERNATIVE VENDOR AND DEVICE IDS
+
+If your modem uses a chipset supported by the drivers but isn't
+recognized by the driver, please contact modem.support@linuxant.com.
+
+
+DOCUMENTATION
+
+See the included document 100498D_RM_HxF_Released.pdf (viewable with
+Adobe Acrobat reader or other PDF readers).
+
+
+REMOVING THE DRIVER
+
+If for any reason you wish to un-install the HSF drivers from your
+system, simply run the "hsfconfig --uninstall" command in a root shell.
+
+
+MORE INFORMATION AND HELP
+
+If you require assistance or need more information, go to:
+              http://www.linuxant.com/drivers
+
+Conexant Systems neither distributes nor maintains this package.
+PLEASE DO NOT CONTACT CONEXANT REGARDING THIS SOFTWARE!!!
+
+
+BUGS
+
+A list of currently known problems is included in the file "BUGS".
+
+
+BAD CONNECTIONS
+
+If you experience sudden disconnects or bad connections, please check
+the last call status information, which can be obtained with the
+AT#UG command or "cat /proc/driver/hsf/0/lastcallstatus".
+Alternatively the driver can be configured to automatically log
+this data upon carrier loss by adding the "loglastcallstatus=1" parameter
+to the "options hsfserial" line in /etc/modules.conf or /etc/modprobe.conf.
+
+
+REPORTING PROBLEMS
+
+Additional problem reports or patches may be sent to:
+	modem.support@linuxant.com
+
+Enclosing the output of "hsfconfig --dumpdiag" and the last call status
+information if pertinent (see above) in your report can greatly
+facilitate problem resolution.
+

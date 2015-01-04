@@ -1,0 +1,15 @@
+Source: @CNXTTARGET@modem
+Section: non-free
+Priority: optional
+Maintainer: Linuxant inc. <modem.support@linuxant.com>
+Standards-Version: 3.1.0.0
+
+Package: @CNXTTARGET@modem
+Architecture: any
+Description: @CNXTDRVDSC@ driver
+@README_FILE@
+
+Package: @CNXTTARGET@modem-doc
+Architecture: all
+Description: Documentation for @CNXTDRVDSC@ driver
+

@@ -1,0 +1,532 @@
+#!/bin/bash
+#
+# Copyright (c) 2005 Linuxant inc.
+#
+# NOTE: The use and distribution of this software is governed by the terms in
+# the file LICENSE, which is included in the package. You must read this and
+# agree to these terms before using or distributing this software.
+#
+# This script helps the user to apply patches to the driver.
+#
+# Posible return values of this script:
+# 0:         Everything is okay but the user did not apply any patches
+# 100:       Everything is okay and the user installed at least one patch
+# *:         An error occured
+#
+
+check_tools()
+{
+	while [ -n "${1}" ]; do
+		which $1 > /dev/null 2>&1
+		ret=$?
+
+		if [ ${ret} -ne 0 ]; then
+			CHECK_TOOLS_FAIL="${1}"
+			return ${ret}
+		fi
+
+		shift
+	done
+
+	return 0
+}
+
+output_escape()
+{
+	echo -n ""
+}
+
+jump_to_col()
+{
+	to_col=$1
+
+	# VT100 command, go back to the first column
+	output_escape
+	echo -n "[${COL}D"
+
+	# VT100 command, go forward ${to_col}
+	output_escape
+	echo -n "[${to_col}C"
+}
+
+putchar()
+{
+	char="$1"
+	time=$2
+
+	${AWK} 'END {for (i=0;i<time;i++) printf "="}' time=${time} </dev/null
+}
+
+display_patch_list()
+{
+	if [ ${NB_PATCH} -eq 0 ]; then
+		echo "No patches are available."
+		exit 0
+	fi
+
+	col_space=1
+
+	# Figure out the size of each column
+	col_num_size="`expr ${NB_PATCH} + 1 | wc -c`"
+
+	col_name_start=`expr ${col_num_size} + ${col_space}`
+	
+	nb=0
+	while [ ${nb} -ne ${NB_PATCH} ]; do
+		echo "${NAME[${nb}]}"
+		nb="`expr ${nb} + 1`"
+	done > "${TMPDIR}/patcher_col_size.${PID}"
+	col_name_size="`wc -L \"${TMPDIR}/patcher_col_size.${PID}\" | ${AWK} '{print $1}'`"
+	rm -f "${TMPDIR}/patcher_col_size.${PID}"
+
+	# The name column must be at least of size 4 (i.e. strlen("Name"))
+	if [ ${col_name_size} -lt 4 ]; then
+		col_name_size=4
+	fi
+
+	col_inst_size=9 # strlen("Installed")
+	col_inst_start=`expr ${col_name_start} + ${col_name_size} + ${col_space}`
+
+	col_desc_start=`expr ${col_inst_start} + ${col_inst_size} + ${col_space}`
+	col_desc_size="`expr ${COL} - ${col_inst_size} - ${col_name_size} - ${col_num_size} - ${col_space} - ${col_space} - ${col_space}`"
+
+	# The description column must be at least of size 11 (i.e. strlen("Description"))
+	if [ ${col_desc_size} -lt 11 ]; then
+		col_desc_size=11
+	fi
+
+	# Print the header of the table
+	jump_to_col ${col_name_start}; echo -n "Name"
+	jump_to_col ${col_inst_start}; echo -n "Installed"
+	jump_to_col ${col_desc_start}; echo "Description"
+
+	jump_to_col ${col_name_start}; putchar '=' ${col_name_size}
+	echo -n " "
+	putchar '=' ${col_inst_size}
+	echo -n " "
+	putchar '=' ${col_desc_size}
+	echo ""
+
+	# Fold each description lines
+	nb=0
+	while [ ${nb} -ne ${NB_PATCH} ]; do
+		echo "${DESC[${nb}]}"
+		echo "***"
+		nb="`expr ${nb} + 1`"
+	done > "${TMPDIR}/patcher_fold.$$"
+
+	fold -s -w ${col_desc_size} < "${TMPDIR}/patcher_fold.$$" > "${TMPDIR}/patcher_folded.$$"
+
+	# Print the body of the table
+	nb=0
+	while [ ${nb} -ne ${NB_PATCH} ]; do
+		nb_user="`expr ${nb} + 1`"
+		echo -n "${nb_user})"
+
+		jump_to_col ${col_name_start}
+		echo -n "${NAME[${nb}]}"
+
+		jump_to_col ${col_inst_start}
+		if is_patch_installed "${FILE[${nb}]}"; then
+			echo -n "   Yes"
+		else
+			echo -n "   No"
+		fi
+
+		while read line && [ "${line}" != "***" ]; do
+			jump_to_col ${col_desc_start}
+			echo "${line}"
+		done
+
+		nb="`expr ${nb} + 1`"
+	done < "${TMPDIR}/patcher_folded.$$"
+
+	rm -f "${TMPDIR}/patcher_fold.$$"
+	rm -f "${TMPDIR}/patcher_folded.$$"
+}
+
+download_file()
+{
+	echo -n "Downloading the file '${1}', please wait..."
+	wget -O "${2}" "${1}" > "${TMPDIR}/patcher_wget_log.$$" 2>&1
+
+	ret=$?
+
+
+	if [ ${ret} -ne 0 ]; then
+		echo " failed."
+		echo "ERROR: failed to download the file ${1}:"
+		cat "${TMPDIR}/patcher_wget_log.$$"
+	else
+		echo " done."
+	fi
+
+	rm -f "${TMPDIR}/patcher_wget_log.$$"
+
+	return ${ret}
+}
+
+usage()
+{
+	echo "$0 [options] [file]"
+	echo ""
+	echo "  --help, -h Show this help message."
+	echo "  [file]     The patch to apply to the software. If no file is giveen on the"
+	echo "             command line, the program will try to download a list of available"
+	echo "             patches and prompt for their installation."
+}
+
+is_patch_installed()
+{
+	[ -e "${INSTALLED_PATCH_DIR}/$1" ]
+}
+
+patch_with_file()
+{
+	patch_file="$1"
+	patch_name="`basename ${patch_file}`"
+
+	prev="`echo \"${patch_name}\" | sed -e 's/^\([^-]*-[^-]*-[^-]*\)-[^-]*\(\.patch\)$/\1*\2/'`"
+
+	for f in ${INSTALLED_PATCH_DIR}/${prev}; do
+		if [ -e "${f}" ]; then
+			echo -n "Reversing previous revision of the patch... "
+			patch -R -p1 < "${f}" > "${TMPDIR}/patcher_patch_reverse.$$" 2>&1
+
+			if [ $? -ne 0 ]; then
+				reverse_patch_name="`basename ${f}`"
+
+				echo "failed."
+				echo ""
+				echo "ERROR: Failed to reverse the patch '${reverse_patch_name}'. Output from the 'patch -R -p1' command:"
+				echo ""
+				echo "---"
+				cat "${TMPDIR}/patcher_patch_reverse.$$"
+				echo "---"
+
+				rm -f "${TMPDIR}/patcher_patch_reverse.$$" || exit 1
+
+				return 1
+			else
+				echo "done."
+				rm -f "${f}" || exit 1
+			fi
+
+			rm -f "${TMPDIR}/patcher_patch_reverse.$$" || exit 1
+		fi
+	done
+
+	echo -n "Patching... "
+
+	patch -p1 < "${patch_file}" > "${TMPDIR}/patcher_patch.$$" 2>&1
+
+	ret=$?
+
+	if [ ${ret} -ne 0 ]; then
+		echo "failed."
+		echo ""
+		echo "ERROR: Failed to install patch '${patch_name}'. Output from the 'patch -p1' command:"
+		echo ""
+		echo "---"
+		cat "${TMPDIR}/patcher_patch.$$"
+		echo "---"
+
+		echo "Note: It can be normal that multiple patches fail to be installed at the same"
+		echo "time and in this case a manual merge is required. Please read the manual page"
+		echo "of 'patch' for more details."
+
+		exit 1
+	else
+		echo "done."
+	fi
+
+	rm -f "${TMPDIR}/patcher_patch.$$"
+	
+	cp -r "${patch_file}" "${INSTALLED_PATCH_DIR}/${patch_name}" || exit 1
+
+	return 0
+}
+
+are_all_patches_installed()
+{
+	nb=0
+	
+	while [ ${nb} -ne ${NB_PATCH} ]; do
+		if ! is_patch_installed "${FILE[${nb}]}"; then
+			return 1
+		fi
+		nb="`expr ${nb} + 1`"
+	done
+
+	return 0
+}
+
+###############################################################################
+
+# Parse command line options
+if [ -n "${2}" ]; then
+	echo "ERROR: $0: This command accepts only a single argument."
+	usage
+	exit 1
+fi
+
+if [ -n "${1}" ]; then
+	case "${1}" in
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		to_patch="${1}"
+		;;
+	esac
+fi
+
+# Safe environment...
+PATH=/usr/sbin:/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin
+export PATH
+unset LANG; unset LOCALE; unset LC_TIME; unset LC_ALL
+umask 022
+
+if check_tools gawk; then
+	AWK=gawk
+else
+	if check_tools awk; then
+		AWK=awk
+	else
+		echo "ERROR: Can't find the 'awk' tool on your system. Please install the 'gawk' package and try again."
+		exit 1
+	fi
+fi
+
+if ! check_tools wget; then
+	echo "ERROR: Can't find the 'wget' tool on your system. Please install the 'wget'"
+	echo "package and try again."
+	exit 1
+fi
+
+if ! check_tools patch; then
+	echo "ERROR: Can't find the 'patch' tool on your system. Please install the 'patch'"
+	echo "package and try again."
+	exit 1
+fi
+
+if ! check_tools wc stty expr rm fold; then
+	echo "ERROR: Can't find the '${CHECK_TOOLS_FAIL}' tool on your system. Please install the 'coreutils'"
+	echo "package and try again."
+	exit 1
+fi
+
+TMPDIR="/var/run"
+PID=$$
+INSTALLED_PATCH_DIR="installed_patches"
+CONFIGFILE="@CNXTSBINDIR@/@CNXTTARGET@config"
+
+# If a file was specified on the command line, figure out the full path of
+# it before we enter the right directory
+if [ -n "${to_patch}" ]; then
+	case "${to_patch}" in
+	/*)
+		;;
+	*)
+		to_patch="`pwd`/${to_patch}"
+	esac
+fi
+
+# Make the current directory the root of the driver package
+cd "`dirname $0`/.."
+
+if [ -z "${to_patch}" ]; then
+	PATCHER_URL="@PATCHERURL@"
+
+	if [ ! -d "${INSTALLED_PATCH_DIR}" ]; then
+		mkdir -p "${INSTALLED_PATCH_DIR}"
+	fi
+
+	if ! download_file "${PATCHER_URL}/manifest" "${INSTALLED_PATCH_DIR}/manifest"; then
+		echo
+		echo "Failed to download the list of available patches. If you do not have an"
+		echo "active Internet connection, please manually download patche(s) at:"
+		echo
+		echo "@PATCHERURLUSER@"
+		echo
+		
+		if [ -x "${CONFIGFILE}" ]; then
+			echo "and apply them with the '@CNXTTARGET@config --patch <file.patch>' command."
+		else
+			echo "and apply them with the '$0 <file.patch>' command."
+		fi
+	fi
+
+	echo
+
+	MANIFEST_FILE="${INSTALLED_PATCH_DIR}/manifest"
+
+	# Load the manifest file
+	NB_PATCH=0
+
+	while read f d; do
+		FILE[${NB_PATCH}]="${f}"
+		DESC[${NB_PATCH}]="${d}"
+
+		# Obtain the version and the name of the patch
+		no_dot_patch="`echo ${f} | sed -e 's/\.patch$//'`"
+	
+		VERSION[${NB_PATCH}]="`echo ${no_dot_patch} | ${AWK} -F - '{printf $1; printf "-"; printf $2}'`"
+		NAME[${NB_PATCH}]="`echo ${no_dot_patch} | ${AWK} -F - '{print $3}'`"
+		REV[${NB_PATCH}]="`echo ${no_dot_patch} | ${AWK} -F - '{print $4}'`"
+
+		# Patches with no or bogus revision information are considered revision 1
+		case "${REV[${NB_PATCH}]}" in
+		[0-9]*)
+			;;
+		*)
+			REV[${NB_PATCH}]=1
+			;;
+		esac
+
+		if [ ${REV[${NB_PATCH}]} -ne 1 ]; then
+			DESC[${NB_PATCH}]="${d} (Revision ${REV[${NB_PATCH}]})"
+		fi
+
+		case "@CNXTTARGET@-@CNXTLINUXVERSION@" in
+		${VERSION[${NB_PATCH}]}*)
+			# Check the case that this new patch is actually a newer revision of a patch
+			nb=0
+			while [ ${nb} -lt ${NB_PATCH} ]; do
+				if [ "${NAME[${nb}]}" == "${NAME[${NB_PATCH}]}" ] && [ ${REV[${nb}]} -le ${REV[${NB_PATCH}]} ]; then
+					REV[${nb}]=${REV[${NB_PATCH}]}
+					FILE[${nb}]="${FILE[${NB_PATCH}]}"
+					DESC[${nb}]="${DESC[${NB_PATCH}]}"
+					break
+				fi
+				nb="`expr ${nb} + 1`"
+			done
+
+			if [ ${nb} -eq ${NB_PATCH} ]; then
+				NB_PATCH="`expr ${NB_PATCH} + 1`"
+			fi
+			;;
+		esac
+	done < "${MANIFEST_FILE}"
+
+	COL="`stty size | ${AWK} '{print $2}'`"
+	exit_success=0
+
+	while /bin/true; do
+		display_patch_list
+		echo ""
+
+		answer_ok=0
+
+		if [ ${NB_PATCH} -eq 1 ]; then
+			if is_patch_installed "${FILE[0]}"; then
+				echo "The only available patch has been already installed."
+				exit ${exit_success}
+			else
+				while [ ${answer_ok} -eq 0 ]; do
+					echo -n "Do you want to install the '${FILE[0]}' patch? [Y/n] "
+					read answer
+
+					if [ -z "${answer}" ]; then
+						answer=y
+					fi
+					case "${answer}" in
+						[Yy] | [Yy][Ee][Ss])
+						answer_ok=1
+						to_patch="${FILE[0]}"
+						;;
+					[Nn] | [Nn][Oo])
+						exit ${exit_success}
+						;;
+					*)
+						echo "ERROR: Invalid answer!"
+						;;
+					esac
+				done
+			fi
+		else
+			if are_all_patches_installed; then
+				echo "All the available patches are already installed."
+				exit ${exit_success}
+			fi
+		
+			while [ ${answer_ok} -eq 0 ]; do
+				echo -n "Please select the patch you want to install [1-${NB_PATCH}, 0 to quit]: "
+				read answer
+
+				case "${answer}" in
+				[0-9]*)
+					upper_bound="`expr ${NB_PATCH} + 1`"
+					if [ ${answer} -gt 0 ] && [ ${answer} -lt ${upper_bound} ]; then
+						real_no="`expr ${answer} - 1`"
+						to_patch="${FILE[${real_no}]}"
+
+						if is_patch_installed ${to_patch}; then
+							echo "ERROR: This patch is already installed."
+						else
+							answer_ok=1
+						fi
+					else
+						if [ ${answer} -eq 0 ]; then
+							exit ${exit_success}
+						else
+							echo "ERROR: Invalid answer!"
+						fi
+					fi
+					;;
+				*)
+					echo "ERROR: Invalid answer!"
+					;;
+				esac
+			done
+		fi
+
+		if [ ! -d "${INSTALLED_PATCH_DIR}" ]; then
+			mkdir -p "${INSTALLED_PATCH_DIR}"
+		fi
+
+		echo ""
+		download_file "${PATCHER_URL}/${to_patch}" "${TMPDIR}/${to_patch}" || exit 1
+		patch_with_file "${TMPDIR}/${to_patch}"
+		rm -f "${TMPDIR}/${to_patch}" || exit 1
+
+		if [ $? -eq 0 ]; then
+			exit_success=100
+			if are_all_patches_installed; then
+				exit ${exit_success}
+			else
+				echo ""
+			fi
+		else
+			exit 1
+		fi
+	done
+else
+	# Patch specified on the command line...
+	if [ ! -f "${to_patch}" ]; then
+		echo "ERROR: File '${to_patch}' does not exist."
+		exit 1
+	fi
+
+	full_to_patch="${to_patch}"
+	to_patch="`basename ${to_patch}`"
+
+	if is_patch_installed "${to_patch}"; then
+		echo "ERROR: The patch '${to_patch}' is already installed."
+		exit 1
+	fi
+	
+	if [ ! -d "${INSTALLED_PATCH_DIR}" ]; then
+		mkdir -p "${INSTALLED_PATCH_DIR}"
+	fi
+
+	patch_with_file "${full_to_patch}"
+
+	if [ $? -eq 0 ]; then
+		exit 100
+	else
+		exit 1
+	fi
+fi
+

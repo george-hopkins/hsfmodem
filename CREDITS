@@ -1,0 +1,24 @@
+This project was initiated by MBSI (Marc Boucher) and Conexant Systems Inc.
+
+It is now being maintained and further developed by Linuxant.
+
+Thanks to the amazing engineers and the great management at Conexant for
+their wonderful cooperation and understanding and support of Linux.
+(with deepest apologies to Eitan and his father for the misdirected emails! ;-)
+
+Thanks to Dell Computer Corporation for facilitating our testing on SMP servers.
+
+Thanks to HP for kindly supporting the integration of the ALI MC97 driver.
+
+Thanks to Linus Torvalds, Theodore Ts'o for their previous work on
+the Linux serial driver, and Russell King for the new UART-independent core.
+
+Thanks to Benjamin Herrenschmidt for his assistance in making the HCF USB
+version run on PPC.
+
+Thanks to Kai Germaschewski for his excellent 2.6 kbuild work and testing help.
+
+Thanks to Takashi Iwai, PeiSen Hou and Intel Corporation for Linux HD Audio support.
+
+Thanks to all beta testers and people who have sent bug reports and patches.
+

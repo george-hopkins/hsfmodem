@@ -1,0 +1,127 @@
+#!/bin/bash
+#
+# Copyright (c) 2003-2004 Linuxant inc.
+#
+# NOTE: The use and distribution of this software is governed by the terms in
+# the file LICENSE, which is included in the package. You must read this and
+# agree to these terms before using or distributing this software.
+# 
+# This script tries to unload all @CNXTTARGET@-related modules present in the system
+#
+
+unload_mods()
+{
+	for mod in @CNXTMODS@; do
+		if [ "${mod}" = "dgcusbdcp" ]; then
+			killall dgcdcpd 2>/dev/null
+		fi
+
+		if [ ! -e "@CNXTETCDIR@/../.@CNXTTARGET@modem-hda-disable" ]; then
+			if [ "${mod}" = "hsfhda" ]; then
+				# need to rmmod bus controller module first
+				if lsmod | grep -q "^snd_hda_intel "; then
+					rmmod snd_hda_intel 2>&1 | sed 's/^ERROR:/Warning:/' 1>&2
+					if [ ${PIPESTATUS[0]} -ne 0 ]; then
+						return 1
+					fi
+				fi
+			fi
+		fi
+
+		if lsmod | grep -q "^${mod} "; then
+			rmmod ${mod} 2>&1 | sed 's/^ERROR:/Warning:/' 1>&2
+			if [ ${PIPESTATUS[0]} -ne 0 ]; then
+				return 1
+			fi
+		fi
+
+		if [ "${mod}" = "dgcusbdcp" ]; then
+			# need to rmmod cdc_acm module
+			acmmod="`lsmod | grep '^cdc_acm ' | sed 's/ .*//' | head -n 1`"
+			if [ -n "${acmmod}" ]; then
+				rmmod ${acmmod} 2>&1 | sed 's/^ERROR:/Warning:/' 1>&2
+			fi
+		fi
+
+	done
+
+	if [ ! -e "@CNXTETCDIR@/../.@CNXTTARGET@modem-hda-disable" ]; then
+		if lsmod | grep -q "^snd_hda_codec "; then
+			rmmod snd_hda_codec 2>&1 | sed 's/^ERROR:/Warning:/' 1>&2
+			if [ ${PIPESTATUS[0]} -ne 0 ]; then
+				return 1
+			fi
+		fi
+	fi
+
+	exit 0
+}
+
+kill_procs()
+{
+	method=$1
+	majors=$2
+
+	perl - << EOF
+	my @tokill;
+
+	foreach (glob "/proc/[123456789]*") {
+		my \$pid = \$_;
+		foreach (glob \$pid . "/fd/*") {
+			my \$major = (stat)[6];
+			if (defined(\$major)) {
+				\$major >>= 8;
+				foreach \$match (qw/ ${majors} /) {
+					if (\$major == \$match) {
+						\$pid =~ s!^/proc/!!;
+						push(@tokill, int(\$pid));
+					}
+				}
+			}
+		}
+	}
+
+	if(@tokill) {
+		print "Sending ${method} signal to processes still using the driver:\n";
+		system("ps -o pid,user,args -wp" . join(",", map sprintf("%d", \$_), @tokill));
+		kill ${method}, @tokill;
+	}
+EOF
+
+	return 0
+}
+
+
+PATH=/usr/sbin:/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin
+export PATH
+
+unload_mods
+
+# Normal unload failed, we will have to kill processes to unload
+maj="`awk '$2 ~ "ttyS@CNXTSERDEV@" { print $1 }' /proc/devices`"
+
+if [ "@CNXTDRIVER@" = "hsf" -a ! -e "@CNXTETCDIR@/../.@CNXTTARGET@modem-hda-disable" ] && grep -q '^Vendor Id: 0x14f1' /proc/asound/card[0123456789]*/codec\#[0123456789]* >/dev/null 2>&1; then
+	# We are on a system with a Conexant HDA modem, we will have to kill
+	# processes which are using the sound as well
+	maj="${maj} `awk '$2 ~ "alsa" { print $1 }' /proc/devices`"
+fi
+
+if [ -n "${maj}" -a "${maj}" != " " ]; then
+	# Be gentle at first
+	kill_procs TERM "${maj}"
+	sleep 1
+	unload_mods
+	sleep 7
+	unload_mods
+	sleep 7
+	unload_mods
+
+	# Last resort...
+	kill_procs KILL "${maj}"
+	sleep 1
+	unload_mods
+	sleep 5
+	unload_mods
+fi
+
+exit 1

@@ -1,0 +1,27 @@
+#!/bin/sh
+
+if [ "$1" = "configure" ]; then
+
+	if [ -d /usr/doc -a ! -e /usr/doc/@CNXTTARGET@modem -a -d /usr/share/doc/@CNXTTARGET@modem ]; then
+		ln -sf ../share/doc/@CNXTTARGET@modem /usr/doc/@CNXTTARGET@modem
+	fi
+
+	echo "DEB" > "@CNXTETCDIR@/package"
+
+	if [ -z "${CNXT_NOAUTOCONFIG}" ]; then
+        	@CNXTSBINDIR@/@CNXTTARGET@config --auto
+		ret=$?
+		if [ "${ret}" -eq 123 ]; then
+			ret=0
+		fi
+		if [ "${ret}" -eq 124 -a -z "${CNXT_NOWRONGKERNELFAIL}" ]; then
+			ret=0
+		fi
+		exit ${ret}
+	else
+        	echo "To complete the installation and configuration of your modem,"
+        	echo "please run \"@CNXTTARGET@config\" (or \"@CNXTSBINDIR@/@CNXTTARGET@config\")"
+        	exit 0
+	fi
+fi
+

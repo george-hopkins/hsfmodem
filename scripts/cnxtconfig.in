@@ -1,0 +1,3127 @@
+#!/bin/bash
+#
+# Copyright (c) 2003-2004 Linuxant inc.
+#
+# NOTE: The use and distribution of this software is governed by the terms in
+# the file LICENSE, which is included in the package. You must read this and
+# agree to these terms before using or distributing this software.
+#
+# This script handles all aspects of installing and configuring the
+# @CNXTDRVDSC@ driver under Linux.
+#
+# It tries to be as distribution-neutral as possible.
+
+ask_yesno()
+{
+	$automode && return $2
+
+	while true; do
+		echo -n "$1"
+		read answer
+		case "${answer}" in
+		[yY] | [yY][eE][sS])
+			return 0
+			;;
+		[nN] | [nN][oO])
+			return 1
+			;;
+		"")
+			return $2
+			;;
+		*)
+			echo "Enter 'yes' or 'no'"
+			;;
+		esac
+	done
+}
+
+get_region_list()
+{
+	(cd ${cnxtnvmdir}/${parm_hwprofile[${unit}]}/Region/ && grep '^' ????_NAME) | \
+		sed -e 's/ /_/g' -e 's/^\(....\)_NAME:"\(.*\)"/\2 \1/' | sort
+}
+
+T35c_to_name()
+{
+	sed -e 's/"//g' -e 's/ /_/g' \
+		< ${cnxtnvmdir}/${parm_hwprofile[${unit}]}/Region/${1}_NAME
+}
+
+join_comma_wrap_lines()
+{
+	${AWK} '{
+			if (NR != 1) printf ", "
+			printf "%s",$1
+		}
+		END { print ""}' | fold -s -w78
+}
+
+ask_region()
+{
+	get_region_list > /var/run/cnxtconf.sup.$$
+
+	while true; do
+		if [ -n "${setregion}" ]; then
+			answer="${setregion}"
+		elif ${automode}; then
+			answer="${region}"
+		else
+			echo ""
+			echo -n "Please enter region name for modem unit ${unit} [$region]: "
+			read answer
+			case "${answer}" in
+			"" | *"[ 	]"*)
+				answer="${region}"
+				;;
+			*)
+				answer="`echo \"${answer}\" | tr '[a-z ]' '[A-Z_]'`"
+				;;
+			esac
+		fi
+
+		if grep -i "^${answer}\** " /var/run/cnxtconf.sup.$$ > /var/run/cnxtconf.ncty.$$
+		then
+			read region regioncode < /var/run/cnxtconf.ncty.$$
+			rm -f /var/run/cnxtconf.sup.$$ /var/run/cnxtconf.ncty.$$
+			return 0
+		else
+			echo ""
+			echo "ERROR: Region \"${answer}\" is not supported."
+
+			if ${automode}; then
+				rm -f /var/run/cnxtconf.sup.$$ /var/run/cnxtconf.ncty.$$
+				return 1
+			fi
+			setregion=""
+			echo ""
+			echo "Available countries: "
+			echo ""
+
+			grep -v '\*' /var/run/cnxtconf.sup.$$ | join_comma_wrap_lines
+			echo ""
+			grep '\*' /var/run/cnxtconf.sup.$$ | tr -d '\*' | join_comma_wrap_lines
+
+		fi
+	done
+}
+
+autodetect_region()
+{
+	# Try to guess what region we're in, using the timezone settings
+
+	localtime_size="`/bin/ls -lL /etc/localtime 2>/dev/null | ${AWK} '{print $5}'`"
+
+	if ! [ ${localtime_size} -gt 0 ]; then
+		return 1
+	fi
+
+	zoneinfo_dir=/usr/share/zoneinfo
+
+	if [ ! -d ${zoneinfo_dir} -o ! -f ${zoneinfo_dir}/zone.tab ]; then
+		return 1
+	fi
+
+	# The following maps ISO-3166 country codes to T.35 codes
+	iso_AR=0007 # ARGENTINA
+	iso_AU=0009 # AUSTRALIA
+	iso_AT=000A # AUSTRIA
+	iso_BH=000C # BAHRAIN
+	iso_BD=000D # BANGLADESH
+	iso_BE=000F # BELGIUM
+	iso_BO=0014 # BOLIVIA
+	iso_BR=0016 # BRAZIL
+	iso_BN=001A # BRUNEI
+	iso_BG=001B # BULGARIA
+	iso_CA=0020 # CANADA
+	iso_CL=0025 # CHILE
+	iso_CN=0026 # CHINA
+	iso_CO=0027 # COLOMBIA
+	iso_CR=002B # COSTA_RICA
+	iso_HR=00FA # CROATIA
+	iso_CY=002D # CYPRUS
+	iso_CZ=002E # CZECH
+	iso_DK=0031 # DENMARK
+	iso_DO=0033 # DOMINICAN_REPUBLIC
+	iso_EC=0035 # ECUADOR
+	iso_EG=0036 # EGYPT
+	iso_SV=0037 # EL_SALVADOR
+	iso_FI=003C # FINLAND
+	iso_FR=003D # FRANCE
+	iso_DE=0004 # GERMANY
+	iso_GR=0046 # GREECE
+	iso_GT=0049 # GUATEMALA
+	iso_HT=004E # HAITI
+	iso_HN=004F # HONDURAS
+	iso_HK=0050 # HONG_KONG
+	iso_HU=0051 # HUNGARY
+	iso_IS=0052 # ICELAND
+	iso_IN=0053 # INDIA
+	iso_ID=0054 # INDONESIA
+	iso_IE=0057 # IRELAND
+	iso_IL=0058 # ISRAEL
+	iso_IT=0059 # ITALY
+	iso_JP=0000 # JAPAN
+	iso_KR=0061 # KOREA
+	iso_KW=0062 # KUWAIT
+	iso_LA=0063 # LAOS
+	iso_LV=00F8 # LATVIA
+	iso_LI=0068 # LIECHTENSTEIN
+	iso_LU=0069 # LUXEMBOURG
+	iso_MO=006A # MACAO
+	iso_MY=006C # MALAYSIA
+	iso_MT=0070 # MALTA
+	iso_MX=0073 # MEXICO
+	iso_MN=001C # MYANMAR
+	iso_NL=007B # NETHERLANDS
+	iso_NZ=007E # NEW_ZEALAND
+	iso_NO=0082 # NORWAY
+	iso_PK=0084 # PAKISTAN
+	iso_PA=0085 # PANAMA
+	iso_PY=0087 # PARAGUAY
+	iso_PE=0088 # PERU
+	iso_PH=0089 # PHILIPPINES
+	iso_PL=008A # POLAND
+	iso_PT=008B # PORTUGAL
+	iso_PR=008C # PUERTO_RICO
+	iso_RO=008E # ROMANIA
+	iso_RU=00B8 # RUSSIA
+	iso_SA=0098 # SAUDI_ARABIA
+	iso_SG=009C # SINGAPORE
+	iso_SK=00FB # SLOVAKIA
+	iso_SI=00FC # SLOVENIA
+	iso_ZA=009F # SOUTH_AFRICA
+	iso_ES=00A0 # SPAIN
+	iso_LK=00A1 # SRI_LANKA
+	iso_SE=00A5 # SWEDEN
+	iso_CH=00A6 # SWITZERLAND
+	iso_TW=00FE # TAIWAN
+	iso_TH=00A9 # THAILAND
+	iso_TR=00AE # TURKEY
+	iso_GB=00B4 # UK
+	iso_UA=00B2 # UKRAINE
+	iso_AE=00B3 # UNITED_ARAB_EMIRATES
+	iso_UY=00B7 # URUGUAY
+	iso_US=00B5 # USA
+	iso_VE=00BB # VENEZUELA
+	iso_VN=00BC # VIETNAM
+
+	(
+		cd ${zoneinfo_dir} 2>/dev/null || return 1
+		find . -type f -size "${localtime_size}"c -print | sed 's@^\./@@' | \
+			while read file; do
+				cmp -s /etc/localtime $file || continue
+# in the egrep and sed regular expressions below, it is very important to
+# have tabs, not spaces
+				egrep "	$file(	.*|\$)" ${zoneinfo_dir}/zone.tab
+			done | sed -n '/^[^#]/s/	.*//p' | sort | uniq | \
+				while read code; do
+					eval "echo \${iso_${code}}"
+				done | sort | uniq
+		return 0
+	)
+}
+
+configure_region()
+{
+	region="${setregion}"
+	if [ -z "${region}" -a -n "${parm_regionName[${unit}]}" ]; then
+		region="${parm_regionName[${unit}]}"
+	fi
+
+	if [ -z "${region}" -o "${region}" = "AUTO" ]; then
+		if [ -z "${autoregion}" ]; then
+			regiont35="`autodetect_region | head -n 1`"
+			echo ""
+			if [ -z "${regiont35}" ]; then
+				echo "Unable to determine region, defaulting to \"USA\""
+				autoregion=USA
+			else
+				autoregion="`T35c_to_name \"${regiont35}\"`"
+				echo "Automatically guessed region (using timezone): \"${autoregion}\""
+			fi
+		fi
+		region="${autoregion}"
+		if [ "${setregion}" = "AUTO" ]; then
+			setregion="${autoregion}"
+		fi
+	fi
+
+	ask_region || return 1
+
+	parm_regionName[${unit}]="${region}"
+	parm_regionT35c[${unit}]="${regioncode}"
+
+	if ! @CNXTTARGET@stop >/dev/null 2>&1; then
+		echo ""
+		echo "Unable to unload driver to configure region; modem in use?"
+		echo "try configuring it manually with \"AT+GCI=${parm_regionT35c[${unit}]}\""
+	fi
+	sleep 1
+
+	echo ""
+	echo "Setting region for modem unit ${unit}: \"${parm_regionName[${unit}]}\""
+	touch ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/.region_set
+	echo "${parm_regionT35c[${unit}]}" > ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/COUNTRY_CODE
+	res=$?
+
+	return ${res}
+}
+
+# Convert a key from display to internal format
+# The md5sum is used for input verification.
+disptokey()
+{
+	k="`echo \"$1\" | tr '[a-z]' '[A-Z]' | sed 's/FREE/00000000/' | tr -d -c '[0-9A-F\012]'`"
+	case $k in
+	00000000)
+		echo "$k"
+		;;
+	????????????)
+		key="`echo \"$k\" | cut -c1-8`"
+		if [ "`echo \"${key}\" | md5sum | cut -c1-4 | tr '[a-f]' '[A-F]'`" = "`echo \"$k\" | cut -c9-12`" ]; then
+			echo "${key}"
+		else
+			echo "checksum error"
+		fi
+		;;
+	*)
+		echo "format error"
+		;;
+	esac
+}
+
+# Convert a key from internal to display format
+# The md5sum is generated for input verification.
+keytodisp()
+{
+	key="$1"
+
+	if [ "${key}" = "00000000" ]; then
+		echo FREE
+		return 0
+	fi
+
+	sum="`echo \"${key}\" | md5sum | cut -c1-4 | tr '[a-f]' '[A-F]'`"
+
+	echo "${key}${sum}" | sed -e 's/^\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)$/\1-\2-\3-\4-\5-\6/'
+}
+
+ask_license()
+{
+	while true; do
+		if [ -n "${setlicense}" ]; then
+			answer="`disptokey \"${setlicense}\"`"
+		elif ${automode}; then
+			answer="${license}"
+		else
+			echo ""
+
+			echo "License keys can be obtained from http://www.linuxant.com/"
+			echo "Without one, the modem operates in FREE mode (max 14.4Kbps data only, no fax)"
+			echo ""
+			echo "The registration ID for modem unit ${unit} is: ${parm_hwid[${unit}]}"
+			echo ""
+			echo -n "Please enter license key [`keytodisp \"$license\"`]: "
+			read answer
+			case "${answer}" in
+			"" | *"[ 	]"*)
+				answer="${license}"
+				;;
+			*)
+				answer="`disptokey \"${answer}\"`"
+				;;
+			esac
+		fi
+
+		case "${answer}" in
+		[0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F])
+			license="${answer}"
+			return 0
+			;;
+		*)
+			echo ""
+			echo "ERROR: Invalid license key: \"${answer}\"."
+			if ${automode}; then
+				return 1
+			fi
+			setlicense=""
+			;;
+		esac
+	done
+}
+
+ask_licowner()
+{
+	while true; do
+		if [ -n "${setlicowner}" ]; then
+			answer="${setlicowner}"
+		elif ${automode}; then
+			if [ -z "${licowner}" ]; then
+				return 1
+			fi
+			answer="${licowner}"
+		else
+			echo ""
+			echo "Note: we respect user privacy. Email addresses are not communicated"
+			echo "nor used for any purpose other than to manage licenses!"
+			echo ""
+
+			echo -n "Please enter your email address [$licowner]: "
+			read answer
+			case "${answer}" in
+			"" | *"[ 	]"*)
+				answer="${licowner}"
+				;;
+			*)
+				answer="`echo \"${answer}\" | tr '[A-Z]' '[a-z]' | tr -d '[ 	<>\012]'`"
+				;;
+			esac
+		fi
+
+		case "${answer}" in
+		?*@?*.?*)
+			licowner="${answer}"
+			return 0
+			;;
+		*)
+			if ! ${automode} || [ "${answer}" != "unknown" ]; then
+				echo ""
+				echo "ERROR: Invalid email address format: \"${answer}\"."
+			fi
+			if ${automode}; then
+				return 1
+			fi
+			setlicowner=""
+			;;
+		esac
+	done
+}
+
+needfullversion() {
+	echo ""
+	echo "This is the free version of the driver, limited to 14.4Kbps data only."
+	echo "For 56K modem and FAX functionality, please upgrade to the full version"
+	echo "available from http://www.linuxant.com/"
+}
+
+configure_license()
+{
+	if ${isfreeversion}; then
+		needfullversion
+		return 1
+	fi
+
+	licowner="${setlicowner}"
+	if [ -z "${licowner}" -a -n "${parm_licowner[${unit}]}" ]; then
+		licowner="${parm_licowner[${unit}]}"
+		if [ "${licowner}" = "unknown" ]; then
+			licowner="${lastowner}"
+		fi
+	fi
+
+	case "${setlicense}" in
+	?*/?*)
+		setlicowner="`echo \"${setlicense}\" | ${AWK} -F/ '{print $1}'`"
+		setlicense="`echo \"${setlicense}\" | ${AWK} -F/ '{print $2}'`"
+		;;
+	*)
+		;;
+	esac
+
+	if [ -z "${setlicense}" ]; then
+		if [ -n "${parm_lickey[${unit}]}" ]; then
+			license="${parm_lickey[${unit}]}"
+		else
+			license=""
+		fi
+	else
+		license="`disptokey \"${setlicense}\"`"
+	fi
+
+	ask_licowner || return 1
+	parm_licowner[${unit}]="${licowner}"
+
+	ask_license || return 1
+	parm_lickey[${unit}]="${license}"
+
+	if ! @CNXTTARGET@stop >/dev/null 2>&1; then
+		echo ""
+		echo "Unable to unload driver to configure license; modem in use?"
+		echo "\"License status\" information might not be up to date."
+		echo "Please reboot your computer."
+	fi
+	sleep 1
+
+	echo ""
+	echo "Setting license for modem unit ${unit}: \"${parm_licowner[${unit}]}/`keytodisp \"${parm_lickey[${unit}]}\"`\""
+	echo "\"${parm_licowner[${unit}]}\"" > ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/LICENSE_OWNER
+	[ -n "${parm_licowner[${unit}]}" -a "${parm_licowner[${unit}]}" != "unknown" ] && lastowner="${parm_licowner[${unit}]}"
+	echo "${parm_lickey[${unit}]}" > ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/LICENSE_KEY
+	rereadparms=true
+	res=$?
+
+	return ${res}
+}
+
+get_hwprofile_list()
+{
+	echo "auto"
+	(cd ${cnxtnvmdir} && find . -follow -type d -maxdepth 1 -print) | \
+		egrep -v '^\.(\/dynamic)?$' | sed 's@^\./@@' | sort
+}
+
+ask_hwprofile()
+{
+	get_hwprofile_list > /var/run/cnxtconf.sup.$$
+
+	while true; do
+		if [ -n "${sethwprofile}" ]; then
+			answer="${sethwprofile}"
+		elif ${automode}; then
+			answer="${hwprofile}"
+		else
+			echo ""
+			echo "Available hardware profiles: "
+			echo ""
+
+			${AWK} '{
+					if (NR != 1) printf ", "
+					if (NR % 5 == 0) print ""
+					printf "%s",$1
+				}
+				END { print ""}' </var/run/cnxtconf.sup.$$
+
+			echo ""
+			echo "WARNING: choosing an incorrect profile may make the modem unusable"
+			echo "or cause system crashes. Use with extreme care!"
+			echo ""
+			echo -n "Please enter hardware profile name for modem unit ${unit} [$hwprofile]: "
+			read answer
+			case "${answer}" in
+			"" | *"[ 	]"*)
+				answer="${hwprofile}"
+				;;
+			*)
+				;;
+			esac
+		fi
+
+		if grep -q -i "^${answer}$" /var/run/cnxtconf.sup.$$
+		then
+			hwprofile="${answer}"
+			rm -f /var/run/cnxtconf.sup.$$
+			return 0
+		else
+			echo ""
+			echo "ERROR: \"${answer}\" is not available."
+
+			if ${automode}; then
+				rm -f /var/run/cnxtconf.sup.$$
+				return 1
+			fi
+			sethwprofile=""
+		fi
+	done
+}
+
+configure_hwprofile()
+{
+	hwprofile="${sethwprofile}"
+	if [ -z "${hwprofile}" -a -n "${parm_hwprofile[${unit}]}" ]; then
+		if [ -s ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/HARDWARE_PROFILE ]; then
+			hwprofile="${parm_hwprofile[${unit}]}"
+		else
+			hwprofile="auto"
+		fi
+	fi
+
+	ask_hwprofile || return 1
+	parm_hwprofile[${unit}]="${hwprofile}"
+
+	if ! @CNXTTARGET@stop >/dev/null 2>&1; then
+		echo ""
+		echo "Unable to unload driver to configure hwprofile; modem in use?"
+	fi
+	sleep 1
+
+	echo ""
+	echo "Setting hwprofile for modem unit ${unit}: \"${hwprofile}\""
+	if [ "${parm_hwprofile[${unit}]}" = "auto" ]; then
+	    rm -f ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/HARDWARE_PROFILE
+	    parm_hwprofile[${unit}]="unknown"
+	    rereadparms=true
+	else
+	    echo "\"${parm_hwprofile[${unit}]}\"" > ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/HARDWARE_PROFILE
+	fi
+	res=$?
+
+	return ${res}
+}
+
+is_generic_package()
+{
+	[ -f ${cnxtlibdir}/modules/Makefile ]
+}
+
+warn_builtin_hda()
+{
+	if [ "@CNXTTARGET@" = "hsf" ]; then
+		if ${REPLACE_HDA}; then
+			echo ""
+			echo "WARNING: $1 older built-in HDA driver; some audio/modem issues may occur".
+			echo "If this is the case, please try the latest alsa-driver-linuxant package"
+			echo "available from http://www.linuxant.com/alsa-driver"
+		fi
+	fi
+}
+
+use_prebuilt_modules()
+{
+	if [ "@CNXTTARGET@" = "hsf" ]; then
+		if ${REPLACE_HDA} && [ "`echo \"${cnxtlibdir}/modules/binaries/$1/snd\"*.${KO}`" != "${cnxtlibdir}/modules/binaries/$1/snd*.${KO}" ]; then
+			warn_builtin_hda "Using"
+			cp -p --remove-destination "${cnxtlibdir}/modules/binaries/$1/snd"*.${KO} "/lib/modules/${OSKERNVERS}/updates/" || return $?
+		fi
+		cp -p --remove-destination "${cnxtlibdir}/modules/binaries/$1/hsf"*.${KO} "/lib/modules/${OSKERNVERS}/extra/"
+	else
+		cp -p --remove-destination "${cnxtlibdir}/modules/binaries/$1/"*.${KO} "/lib/modules/${OSKERNVERS}/extra/"
+	fi
+}
+
+files_present()
+{
+	missing_file=""
+	for f; do
+		if [ ! -f "${f}" ]; then
+			missing_file="${f}"
+			return 1
+		fi
+	done
+	return 0
+}
+
+remove_temp_kernel_tree()
+{
+	if [ -n "${KERNELORG}" ]; then
+		rm -rf "${KERNELSRC}"
+		KERNELSRC="${KERNELORG}"
+		KERNELORG=""
+		return 0
+	fi
+
+	return 1
+}
+
+create_temp_kernel_tree()
+{
+	KERNELORG="${KERNELSRC}"
+	# get absolute pathname with cd/pwd to ensure that our temp dir
+	# is on same filesystem due to use of hardlinks by cp -al
+	KERNELSRC="`(cd \"${KERNELORG}\" && /bin/pwd)`-cnxttmp$$"
+	rm -rf "${KERNELSRC}"
+	if ! cp -al "${KERNELORG}/." "${KERNELSRC}"; then
+		remove_temp_kernel_tree
+		return 1
+	fi
+
+	return 0
+}
+
+kernelrebuild_instructions()
+{
+		echo ""
+		echo "First, ensure that the proper kernel source and compiler packages"
+		echo "from your distribution vendor and/or the community are installed."
+		echo ""
+		echo "The Linux kernel can then be reconfigured by running \"make menuconfig\""
+		echo "under the kernel source directory (usually /usr/src/linux)."
+		echo ""
+		echo "Verify that the proper options for your system are selected."
+		echo ""
+		echo "Then compile and install your new kernel (for more information about"
+		echo "this procedure, see the README file under the kernel source directory),"
+		echo "reboot the system using the new kernel, and re-run \"@CNXTTARGET@config\"."
+}
+
+detect_mmx()
+{
+	if [ "@CNXTDRIVER@" = "hsf" ] && [ "@CNXTARCH@" = "i386" ] && [ -e /proc/cpuinfo ]; then
+		grep -q '^flags.*\<mmx\>' /proc/cpuinfo
+		return $?
+	fi
+
+	return 0
+}
+
+check_kernel()
+{
+#	if [ -n "$OSKERNSMP" ]; then
+#		echo 1>&2 ""
+#		echo 1>&2 "This driver has not been fully tested on SMP kernels."
+#		echo 1>&2 "Please report results to <modem.support@linuxant.com>"
+#	fi
+
+	case "${OSKERNVERS}" in
+	2.[01235].*)
+		echo ""
+		echo 1>&2 "ERROR: ${OSKERNVERS} kernels are no longer supported by this driver!"
+		echo 1>&2 "Please upgrade your Linux distribution or kernel to version 2.4 or 2.6"
+		return 1
+		;;
+	*)
+		;;
+	esac
+
+	if ! detect_mmx; then
+		echo ""
+		echo "WARNING: This driver requires a processor with MMX, which was not detected."
+		echo "Loading the driver without MMX could crash the system."
+		if ! ask_yesno "Are you sure you want to continue? [no] " 1; then
+			return 1
+		fi
+	fi
+
+	return 0
+}
+
+install_patch()
+{
+	patch_file="$1"
+
+	echo ""
+
+	if [ "${PACKTYPE}" != "TAR" ]; then
+		echo 1>&2 "ERROR: The --patch option can only be used with the generic package in the TAR"
+		echo 1>&2 "format of the @CNXTDRVDSC@ driver"
+		return 1
+	fi
+
+	(
+		cd "${PACKSRCDIR}/scripts" || return 1
+		# Just in case the user decides to clean the source tree...
+		if [ ! -e patcher ]; then
+			make patcher > /dev/null 2>&1 || return 1
+		fi
+		./patcher "${patch_file}"
+		ret=$?
+		
+		if [ ${ret} -eq 100 ]; then
+			cd .. && make clean >/dev/null 2>&1
+		fi
+
+		return ${ret}
+	)
+
+	if [ $? -eq 100 ]; then
+		echo ""
+		echo "Patch applied. You may now re-install the updated software by running"
+		echo "\"make install\" from the ${PACKSRCDIR} directory."
+		return 0
+	else 
+		return $? 
+	fi
+}
+
+check_kernel_config()
+{
+	if [ ! -e "${KERNELSRC}/.config" ]; then
+		return 0
+	fi
+
+	missing=
+	nb=0
+	for opt in ${KERN_CONFIG_REQUIRED}; do
+		if kernel_option_exists "${opt}" && ! kernel_option_set "${opt}"; then
+			if [ ${nb} -eq 0 ]; then
+				missing="CONFIG_${opt}"
+				nb=1
+			else
+				missing="${missing} CONFIG_${opt}"
+				nb=`expr ${nb} + 1`
+			fi
+		fi
+	done
+
+	if [ ${nb} -gt 1 ]; then
+		plurial=s
+		This=These
+		this=these
+		is=are
+	else
+		plurial=
+		This=This
+		this=this
+		is=is
+	fi
+
+	if [ -n "${missing}" ]; then
+		echo 1>&2
+		echo 1>&2 "ERROR: The kernel at '${KERNELSRC}' was compiled without the following"
+		echo 1>&2 "option${plurial} enabled: ${missing}"
+		echo 1>&2 "${This} option${plurial} ${is} needed for the @CNXTTARGET@ driver. Please enable"
+		echo 1>&2 "${this} kernel option${plurial}, re-compile the kernel and try again."
+		return 1
+	fi
+
+	present=
+	nb=0
+	for opt in ${KERN_CONFIG_WARNING}; do
+		if kernel_option_set "${opt}"; then
+			if [ ${nb} -eq 0 ]; then
+				present="CONFIG_${opt}"
+				nb=1
+			else
+				present="${present} CONFIG_${opt}"
+				nb=`expr ${nb} + 1`
+			fi
+		fi
+	done
+
+	if [ ${nb} -gt 1 ]; then
+		plurial=s
+		This=These
+		this=these
+		is=are
+	else
+		plurial=
+		This=This
+		this=this
+		is=is
+	fi
+
+	if [ -n "${present}" ]; then
+		echo 1>&2
+		echo 1>&2 "WARNING: The kernel at '${KERNELSRC}' was compiled with the following"
+		echo 1>&2 "option${plurial} enabled: ${present}"
+		echo 1>&2 "${This} option${plurial} ${is} known to be problematic on some systems."
+		echo 1>&2 "If you experience any problems, please disable ${this} option${plurial},"
+		echo 1>&2 "re-compile the kernel and run the '@CNXTTARGET@config -k' command in"
+		echo 1>&2 "a root shell before you ask for help."
+	fi
+
+	return 0
+}
+
+kernel_option_exists()
+{
+	grep -q "CONFIG_${1}[= ]" "${KERNELSRC}/.config"
+	return $?
+}
+
+kernel_option_set()
+{
+	grep -q "^CONFIG_${1}=[yYmM]" "${KERNELSRC}/.config"
+	return $?
+}
+
+
+is_gcc_installed()
+{
+	if [ -z "${GCC_INSTALLED}" ]; then
+		if which gcc >/dev/null 2>&1; then
+			GCC_INSTALLED=0
+		else
+			GCC_INSTALLED=1
+		fi
+	fi
+
+	return ${GCC_INSTALLED}
+}
+
+right_version_file()
+{
+	_versionf="$1"
+
+	if ! is_gcc_installed; then
+		echo ""
+		echo "ERROR: gcc is required to build kernel modules."
+		echo "Please install it and try again."
+		return 2
+	fi
+
+	FILEKERNELVER="`echo UTS_RELEASE | gcc -E -I"${KERNELSRC}/include" -include "${_versionf}" - | grep '^"' | tr -d '"	 '`"
+
+	[ "${OSKERNVERS}" = "${FILEKERNELVER}" ] || return 1
+
+	return 0
+}
+
+right_version_kernel_tree()
+{
+	if [ -e "${KERNELSRC}/include/linux/utsrelease.h" ]; then
+		right_version_file "${KERNELSRC}/include/linux/utsrelease.h"
+	else
+		right_version_file "${KERNELSRC}/include/linux/version.h"
+	fi
+
+	return $?
+}
+
+update_module_dependencies()
+{
+	depmod -a -e -u 2>&1 | tee /dev/fd/2 | grep -q "@CNXTTARGET@"
+	declare -a pipe_status=( ${PIPESTATUS[@]} )
+
+	resdepmod=${pipe_status[0]}
+	resgrep=${pipe_status[2]}
+
+	# only return error if one of our modules is at cause
+	if [ ${resdepmod} -ne 0 -a ${resgrep} -ne 0 ]; then
+		resdepmod=0
+	fi
+
+	disable_conflicting_modules
+
+	return ${resdepmod}
+}
+
+kernel_headers_instructions_fc4_style()
+{
+	case "${OSKERNVERS}" in
+	smp)  KERNHDRSTYPE="-smp";  KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/smp$//'`"  ;;
+	xen0) KERNHDRSTYPE="-xen0"; KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/xen0$//'`" ;;
+	xenU) KERNHDRSTYPE="-xenU"; KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/xenU$//'`" ;;
+	*)    KERNHDRSTYPE=;        KERNHDRSVER="${OSKERNVERS}"                              ;;
+	esac
+
+	echo "Please install the 'kernel${KERNHDRSTYPE}-devel-${KERNHDRSVER}' package."
+	echo "You can install this package with the command:"
+	echo "	yum install kernel${KERNHDRSTYPE}-devel-${KERNHDRSVER}"
+}
+
+kernel_headers_instructions()
+{
+	if [ "${OSDISTIDNT}" = "deb" ]; then
+		echo "Please install the 'kernel-headers-${OSKERNVERS}' package. You can install"
+		echo "it with the 'apt-get install kernel-headers-${OSKERNVERS}' command."
+		return 0
+	elif [ "${OSDISTIDNT}" = "ubuntu" ]; then
+		echo "Please install the 'linux-headers-${OSKERNVERS}' package. You can install"
+		echo "it with the 'apt-get install linux-headers-${OSKERNVERS}' command."
+		return 0
+	elif [ "${OSDISTIDNT}" = "xandros" ]; then
+		KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/-x[0-9]*$//'`"
+		EXTRAVER="`echo ${OSKERNVERS} | sed -e 's/^[^-]*-//'`"
+		echo "Please install the 'xandros-kernel-source-${KERNHDRSVER}' package. You can"
+		echo "install it with the 'apt-get install xandros-kernel-source-${KERNHDRSVER}'"
+		echo "command. Then run the following commands:"
+		echo
+		echo "---"
+		echo "cd /usr/src"
+		echo "tar -xjf xandros-kernel-source-${KERNHDRSVER}.tar.bz2"
+		echo "---"
+		echo
+		echo "Then, edit the file '/usr/src/xandros-kernel-source-${KERNHDRSVER}/Makefile'"
+		echo "and change the line near the top of the file:"
+		echo
+		echo "---"
+		echo "EXTRAVERSION ="
+		echo "---"
+		echo
+		echo "to:"
+		echo
+		echo "---"
+		echo "EXTRAVERSION = ${EXTRAVER}"
+		echo "---"
+		echo
+		echo "Finally, please run the following commands:"
+		echo
+		echo "---"
+		echo "cd /usr/src/xandros-kernel-source-${KERNHDRSVER}"
+		echo "cp /boot/config-${OSKERNVERS} .config"
+		echo "make oldconfig prepare-all"
+		echo "---"
+		return 0
+	elif [ "${OSDISTIDNT}" = "linspire" ]; then
+		echo "Please use Click and Run to install the following packages:"
+		echo
+		echo "---"
+		echo "los-kernel-config-${OSKERNVERS}"
+		echo "los-kernel-headers-${OSKERNVERS}"
+		echo "los-kernel-source-${OSKERNVERS}"
+		echo "---"
+		echo
+		echo "Then run the following commands:"
+		echo
+		echo "---"
+		echo "cd /usr/src"
+		echo "tar -xzf los-kernel-config-${OSKERNVERS}"
+		echo "tar -xzf los-kernel-headers-${OSKERNVERS}"
+		echo "tar -xzf los-kernel-source-${OSKERNVERS}"
+		echo "---"
+		return 0
+	elif [ "${OSDISTIDNT}" = "suse" ]; then
+		KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/-[^-]*$//'`"
+		echo "Please install the 'kernel-source-${KERNHDRSVER}' package. You can install"
+		echo "this package with the 'yast -i kernel-source-${KERNHDRSVER}' command."
+		return 0
+	elif [ "${OSDISTIDNT}" = "mdk" ]; then
+		KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/smp$//'`"
+		echo "Please install the 'kernel-source-${KERNHDRSVER}' package. You can install"
+		echo "it with the 'urpmi kernel-source-${KERNHDRSVER}' command."
+		return 0
+	elif [ "${OSDISTIDNT}" = "mdv" ]; then
+		YEAR=`echo ${OSDISTVERS} | awk -F. '{print $1}'`
+		if [ ${YEAR} -ge 2008 ]; then
+			echo "Please install the 'kernel-devel' package. You can install"
+			echo "it with the 'urpmi kernel-devel' command."
+		else
+			KERNHDRSVER="`echo ${OSKERNVERS} | awk -F- '{print $1 "-" $2}'`"
+			KERNMINVER="`echo ${OSKERNVERS} | awk -F. '{print $1 "." $2}'`"
+			echo "Please install the 'kernel-source-${KERNMINVER}-${KERNHDRSVER}' package. You can install"
+			echo "it with the 'urpmi kernel-source-${KERNMINVER}-${KERNHDRSVER}' command."
+		fi
+		return 0
+	elif [ "${OSDISTIDNT}" = "turbo" ]; then
+		KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/smp$//' -e 's/smp64G$//' -e 's/numa$//'`"
+		echo "Please install the 'kernel-headers-${KERNHDRSVER}' as well as the"
+		echo "'kernel-source-${KERNHDRSVER}' packages."
+	elif [ "${OSDISTIDNT}" = "fdr" ]; then
+		case "${OSDISTVERS}" in
+		1)
+			KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/smp$//'`"
+			echo "Please install the 'kernel-source-${KERNHDRSVER}' package. You can install"
+			echo "it with the 'yum install kernel-source-${KERNHDRSVER}' command."
+			return 0
+			;;
+		2)
+			# The kernel headers files are in the kernel image package
+			return 0
+			;;
+		3)
+			# The kernel headers files are in the kernel image package for old FC3 kernels
+			if [ -h "/lib/modules/`uname -r`/build" ]; then
+				kernel_headers_instructions_fc4_style
+			fi
+			return 0
+			;;
+		4 | 5)
+			kernel_headers_instructions_fc4_style
+			return 0
+			;;
+		esac
+	elif [ "${OSDISTIDNT}" = "rh" ]; then
+		case "${OSDISTVERS}" in
+		EL*)
+			case "${OSDISTVERS}" in
+			EL2 | EL2.? | EL3 | EL3.?)
+				KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/EL.*$/EL/'`"
+				echo "Please install the 'kernel-source-${OSHDRSVERS}' package."
+				return 0
+				;;
+			EL4 | EL4.?)
+				case "${OSKERNVERS}" in
+				smp)     KERNHDRSTYPE="-smp";     KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/smp$//'`"      ;;
+				hugemem) KERNHDRSTYPE="-hugemem"; KERNHDRSVER="`echo ${OSKERNVERS} | sed -e 's/hugemem$//'`"  ;;
+				*)       KERNHDRSTYPE=;           KERNHDRSVER="${OSKERNVERS}"                                 ;;
+				esac
+
+				echo "Please install the 'kernel${KERNHDRSTYPE}-devel-${KERNHDRSVER}' package. You"
+				echo "can install this package with the 'yum install"
+				echo "kernel${KERNHDRSTYPE}-devel-${KERNHDRSVER}' command."
+				return 0
+				;;
+			esac
+			;;
+		*)
+			echo "Please install the 'kernel-source-${OSKERNVERS}' package."
+			return 0
+			;;
+		esac
+	elif [ "${OSDISTIDNT}" = "knoppix" ]; then
+		# Kernel headers are automatically installed when Knoppix is installed to the HD
+		return 0
+ 	elif [ "${OSDISTIDNT}" = "mepis" ]; then
+ 		if  [ -e "/usr/src/KERNEL-README" ]; then
+ 			echo "Please read the file '/usr/src/KERNEL-README' for instructions on how to"
+ 			echo "build the kernel source tree."
+ 			return 0
+ 		else
+ 			# Version 3.4 and later
+ 			echo "Please install the 'linux-headers-${OSKERNVERS}' package. You can install"
+ 			echo "it with the 'apt-get install linux-headers-${OSKERNVERS}' command."
+ 		fi
+	fi
+
+	return 1
+}
+
+recompile_modules()
+{
+	KERNELSRC=/usr/src/linux
+	KERNELORG=""
+
+	if [ -h /lib/modules/${OSKERNVERS}/build -a ! -d /lib/modules/${OSKERNVERS}/build/. ]; then
+		echo ""
+		echo "ERROR: /lib/modules/${OSKERNVERS}/build points to a missing directory"
+		echo ""
+		ls -l /lib/modules/${OSKERNVERS}/build
+		echo ""
+		kernel_headers_instructions
+		return 1
+	fi
+
+	if [ -d /lib/modules/${OSKERNVERS}/build/include ]; then
+		KERNELSRC=/lib/modules/${OSKERNVERS}/build
+	elif [ ! -d "${KERNELSRC}" -a -d "/usr/src/kernel-headers-${OSKERNVERS}" ]; then
+		# Debian
+		KERNELSRC=/usr/src/kernel-headers-${OSKERNVERS}
+	elif [ ! -d "${KERNELSRC}" -a -d "/usr/local/src/linux" ]; then
+		KERNELSRC=/usr/local/src/linux
+	elif [ ! -d "${KERNELSRC}" ]; then
+		kernel_headers_instructions
+	fi
+	if ! $automode; then
+		echo ""
+		echo "Where is the linux source build directory that matches your running kernel?"
+		echo -n "[${KERNELSRC}] "
+		read answer
+		case "${answer}" in
+		"")
+			;;
+		*)
+			KERNELSRC="${answer}"
+			;;
+		esac
+	fi
+
+	# TurboLinux
+	if [ ! -f "${KERNELSRC}/.config" -a -f "${KERNELSRC}/SetupKernelSource.sh" ]; then
+		case "${OSKERNVERS}" in
+		*smp)
+			SETUPKERNTYPE=i586smp
+			;;
+		*smp64G)
+			SETUPKERNTYPE=i586smp64G
+			;;
+		*)
+			SETUPKERNTYPE=i586
+			;;
+		esac
+	
+		echo ""
+		echo "Kernel tree in ${KERNELSRC} not configured; running SetupKernelSource.sh ${SETUPKERNTYPE}"
+		sleep 1
+		(cd "${KERNELSRC}" && ./SetupKernelSource.sh ${SETUPKERNTYPE})
+	fi
+
+	if [ -e "${KERNELSRC}/scripts/kconfig" ]; then
+		use_kbuild=true
+	else
+		use_kbuild=false
+	fi
+
+	if ! files_present \
+		"${KERNELSRC}/include/linux/autoconf.h" \
+		"${KERNELSRC}/include/linux/version.h"; then
+		echo ""
+		echo "WARNING: missing file ${missing_file}"
+		suspect_tree=true
+	else
+		right_version_kernel_tree
+
+		case $? in
+		0)
+			suspect_tree=false
+			;;
+		1)
+			echo ""
+			echo "WARNING: the kernel version (${FILEKERNELVER}) defined in"
+			echo "${KERNELSRC}/include/linux/version.h"
+			echo "does not match the currently running kernel (${OSKERNVERS})"
+			echo "The cause of this problem is an incorrect kernel source path."
+			echo "Please check that ${KERNELSRC} points to the right tree."
+			suspect_tree=true
+			;;
+		2)
+			return 1
+			;;
+		esac
+	fi
+
+	if ${suspect_tree}; then
+		echo "The cause of this is usually a missing or unconfigured"
+		echo "kernel source tree (and sometimes an incorrect directory or symbolic link)."
+		# SuSE has a copy of .config available under /boot for newer kernels
+		if [ -d "${KERNELSRC}/include/linux" -a -f /boot/config-${OSKERNVERS} ]; then
+			echo ""
+			echo "However, proper /boot/config-${OSKERNVERS} was found."
+			if ask_yesno "Would you like to try using it (in a temporary kernel tree)? [yes] " 0; then
+				if ! create_temp_kernel_tree; then
+					echo ""
+					echo "Unable to create temporary kernel tree"
+					kernelrebuild_instructions
+					return 1
+				fi
+				rm -f "${KERNELSRC}/include/linux/.config" \
+						"${KERNELSRC}/include/linux/autoconf.h" \
+						"${KERNELSRC}/include/linux/version.h"
+				if ! cp -p /boot/config-${OSKERNVERS} "${KERNELSRC}/.config"; then
+					echo ""
+					echo "Unable to copy files to temporary kernel tree"
+					remove_temp_kernel_tree
+					kernelrebuild_instructions
+					return 1
+				fi
+				if ! (cd ${KERNELSRC} && make oldconfig prepare-all) >/dev/null 2>&1; then
+					echo ""
+					echo "Unable to prepare temporary kernel tree"
+					remove_temp_kernel_tree
+					kernelrebuild_instructions
+					return 1
+				fi
+			fi
+		# SuSE has copies of autoconf.h and version.h available under /boot
+		elif [ -d "${KERNELSRC}/include/linux" -a -f /boot/vmlinuz.autoconf.h -a -f /boot/vmlinuz.version.h ] && right_version_file /boot/vmlinuz.version.h; then
+			echo ""
+			echo "However, proper /boot/vmlinuz.{autoconf.h,version.h} were found."
+			if ask_yesno "Would you like to try using them (in a temporary kernel tree)? [yes] " 0; then
+				if ! create_temp_kernel_tree; then
+					echo ""
+					echo "Unable to create temporary kernel tree"
+					kernelrebuild_instructions
+					return 1
+				fi
+				rm -f "${KERNELSRC}/include/linux/.config" \
+						"${KERNELSRC}/include/linux/autoconf.h" \
+						"${KERNELSRC}/include/linux/version.h"
+				if ! cp -p /boot/vmlinuz.autoconf.h "${KERNELSRC}/include/linux/autoconf.h" || \
+					! cp -p /boot/vmlinuz.version.h "${KERNELSRC}/include/linux/version.h"; then
+					echo ""
+					echo "Unable to copy files to temporary kernel tree"
+					remove_temp_kernel_tree
+					kernelrebuild_instructions
+					return 1
+				fi
+
+				# we don't really need .config but it can't hurt if available
+				if [ -f /boot/vmlinuz.config ]; then
+					cp -p /boot/vmlinuz.config "${KERNELSRC}/include/linux/.config"
+				fi
+			fi
+		fi
+	fi
+
+	# are we ok now?
+	if [ ! -f "${KERNELSRC}/include/linux/version.h" \
+			-o ! -f "${KERNELSRC}/include/linux/autoconf.h" ]; then
+		remove_temp_kernel_tree
+		kernelrebuild_instructions
+		return 1
+	fi
+
+	buildlogf=/tmp/@CNXTTARGET@config-buildlog.txt
+
+	# set FILEKERNELVER if it isn't already
+	[ -n "${FILEKERNELVER}" ] || right_version_kernel_tree
+
+	check_kernel_config || return $?
+
+	warn_builtin_hda "Building"
+
+	echo ""
+	echo "Building modules for kernel ${FILEKERNELVER}, using source directory"
+	echo "${KERNELSRC}. Please wait..."
+
+	rm -f "${buildlogf}"
+	(cd ${cnxtlibdir}/modules && make "CNXT_KERNELSRC=${KERNELSRC}" "REPLACE_HDA=${REPLACE_HDA}" clean minstall) > ${buildlogf} 2>&1
+	res=$?
+
+	(cd ${cnxtlibdir}/modules && make "CNXT_KERNELSRC=${KERNELSRC}" clean) >/dev/null 2>&1
+
+	remove_temp_kernel_tree
+
+	if [ $res -eq 0 ]; then
+		rm -f ${buildlogf}
+		return 0
+	else
+		echo ""
+		echo "ERROR: Module build failed!"
+		echo "Please examine the log file \"${buildlogf}\" to determine why."
+		return 1
+	fi
+}
+
+dcp_supported()
+{
+	[ "@CNXTDRIVER@" = "hsf" ] || [ "@CNXTDRIVER@" = "dgc" ]
+}
+
+diag_supported()
+{
+	true
+}
+
+old_scr_supported()
+{
+	modinfo -p @CNXTTARGET@osspec 2>/dev/null | grep -q scrmajor
+}
+
+modules_exist()
+{
+	files_present "/lib/modules/${OSKERNVERS}/misc/@CNXTTARGET@"*.${KO} ||
+		files_present "/lib/modules/${OSKERNVERS}/extra/@CNXTTARGET@"*.${KO}
+}
+
+remove_kernel_modules()
+{
+	if modules_exist; then
+		echo ""
+		echo "Removing @CNXTTARGET@ driver from /lib/modules/${OSKERNVERS}/"
+		rm -f "/lib/modules/${OSKERNVERS}/misc/@CNXTTARGET@"*.${KO}
+		rm -f "/lib/modules/${OSKERNVERS}/extra/@CNXTTARGET@"*.${KO}
+
+		for file in `find /lib/modules/${OSKERNVERS} -name '*.REPLACEDBY@CNXTTARGET@modem'`; do
+			file_orig="`echo ${file} | sed -e 's/\.REPLACEDBY@CNXTTARGET@modem//g'`"
+			if [ ! -e "${file_orig}" ]; then
+				mv -f "${file}" "${file_orig}"
+			fi
+		done
+
+		if [ "@CNXTDRIVER@" = "hsf" ]; then
+			rm -f "/lib/modules/${OSKERNVERS}/updates/snd-hda-"*.${KO}
+		fi
+
+		update_module_dependencies
+	fi
+	return 0
+}
+
+binary_modules_avail()
+{
+	[ -d "${cnxtlibdir}/modules/binaries/$1" ]
+}
+
+
+hda_patch_present()
+{
+	mod="`modprobe -l snd-hda-intel`"
+
+	if [ -z "${mod}" ]; then
+		return 1
+	fi
+
+	grep -q patch_cxthsfmodem ${mod} 2>/dev/null
+}
+
+disable_original_drivers()
+{
+	mods="@CNXTMODS@"
+	if [ "@CNXTDRIVER@" = "hsf" ] && ${REPLACE_HDA}; then
+		mods="${mods} snd-hda-intel snd-hda-codec"
+	fi
+
+	modpath="/lib/modules/${OSKERNVERS}/kernel"
+	if [ -d /lib/modules/${OSKERNVERS}/ubuntu ]; then
+		modpath="${modpath} /lib/modules/${OSKERNVERS}/ubuntu"
+	fi
+	if [ -d /lib/modules/${OSKERNVERS}/updates/sound ]; then
+		modpath="${modpath} /lib/modules/${OSKERNVERS}/updates/sound"
+	fi
+
+	for m in ${mods}; do
+		find ${modpath} -name "${m}.*" -a \! -name '*.REPLACEDBY*'  -exec mv -f {} {}.REPLACEDBY@CNXTTARGET@modem \;
+	done
+}
+
+swap_driver()
+{
+	disable_original_drivers
+	rm -f "${cnxtnvmdir}/dynamic/"*"/HARDWARE_ID"
+	@CNXTTARGET@stop # unload any old modules loaded
+	update_module_dependencies || return $?
+}
+
+configure_kernel()
+{
+	check_kernel || return $?
+
+	if modules_exist; then
+		echo ""
+		echo "Warning: existing driver modules found under:"
+		echo "	/lib/modules/${OSKERNVERS}/"
+		if ask_yesno "Would you like to keep using them? [no] " 1; then
+			return 0
+		fi
+	fi
+
+	rm -f "/lib/modules/${OSKERNVERS}/misc/@CNXTTARGET@"*.*o \
+		"/lib/modules/${OSKERNVERS}/extra/@CNXTTARGET@"*.*o
+	if [ "@CNXTDRIVER@" = "hsf" ]; then
+		rm -f "/lib/modules/${OSKERNVERS}/updates/snd-hda-"*.*o
+	fi
+	if [ ! -d "/lib/modules/${OSKERNVERS}/extra" ]; then
+		mkdir -p "/lib/modules/${OSKERNVERS}/extra"
+	fi
+	if [ "@CNXTDRIVER@" = "hsf" ] && [ ! -d "/lib/modules/${OSKERNVERS}/updates" ]; then
+		mkdir -p  "/lib/modules/${OSKERNVERS}/updates"
+	fi
+
+	case "${OSKERNNAME}-${OSKERNVERS}" in
+	*[sS][mM][pP]*)
+		SMPSUFFIX=""
+		;;
+	*)
+		SMPSUFFIX="${OSKERNSMP}"
+		;;
+	esac
+
+	chosen_binary_modules=""
+	if binary_modules_avail "${OSKERNNAME}-${OSKERNVERS}${KERNVERSUFFIX}${SMPSUFFIX}"; then
+		chosen_binary_modules="${OSKERNNAME}-${OSKERNVERS}${KERNVERSUFFIX}${SMPSUFFIX}"
+	else
+		OSKERNVERSDASH="`echo \"${OSKERNVERS}\" | sed 's/_/-/g'`"
+		if binary_modules_avail "${OSKERNNAME}-${OSKERNVERSDASH}${KERNVERSUFFIX}${SMPSUFFIX}"; then
+			chosen_binary_modules="${OSKERNNAME}-${OSKERNVERSDASH}${KERNVERSUFFIX}${SMPSUFFIX}"
+		fi
+	fi
+
+	if [ "@CNXTTARGET@" = "hsf" ]; then
+		if [ -e "${cnxtetcdir}/../.@CNXTTARGET@modem-hda-force" ]; then
+			REPLACE_HDA=true
+		elif [ -e "${cnxtetcdir}/../.@CNXTTARGET@modem-hda-disable" ] || hda_patch_present; then
+			REPLACE_HDA=false
+		else
+			modprobe snd_hda_intel > /dev/null 2>&1
+			if grep -q 'HDA Intel' /proc/interrupts; then
+				if grep -q '^Vendor Id: 0x14f1' "/proc/asound/card"*"/codec#"*; then
+					REPLACE_HDA=true
+				else
+					# We know that there are HDA codec(s) on this system but we didn't
+					# find a Conexant HDA modem, it could be an enumeration problem of the
+					# original HDA bus driver
+					echo ""
+					if ask_yesno "Would you like to use the replacement HDA modules? [yes] " 0; then
+						REPLACE_HDA=true
+					else
+						REPLACE_HDA=false
+					fi
+				fi
+			else
+				# No HDA codec found
+				REPLACE_HDA=false
+			fi
+		fi
+	else
+		USA_HDA=false
+	fi
+
+	if [ -n "${chosen_binary_modules}" ]; then
+		echo ""
+		echo "Pre-built driver modules that seem compatible with your system were found under"
+		echo "${cnxtlibdir}/modules/binaries/${chosen_binary_modules}."
+
+		if ask_yesno "Would you like to use them? [yes] " 0; then
+			if use_prebuilt_modules "${chosen_binary_modules}"; then
+				swap_driver
+				return 0
+			fi
+		fi
+	else
+		echo ""
+		echo "No pre-built modules for: ${OSDISTNAME}-${OSDISTVERS} ${OSKERNNAME}-${OSKERNVERS} ${OSKERNTYPE}${SMPSUFFIX}"
+	fi
+
+	if is_generic_package; then
+		echo ""
+		echo "Trying to automatically build the driver modules..."
+		echo "(this requires a C compiler and proper kernel sources to be installed)"
+
+		if recompile_modules; then
+			swap_driver
+			echo "done."
+			return 0
+		fi
+	else
+		echo ""
+		echo "Please obtain the appropriate variant of this package for your system"
+		echo "or try the generic ${PACKTYPE} or tar version."
+	fi
+
+	return 1
+}
+
+choose_major()
+{
+	device=$1
+	shift
+
+	first=240
+	max=249
+
+	device_line="`grep "^ *[0-9]* *${device}" /proc/devices`"
+
+	if [ $? -eq 0 ]; then
+		echo "${device_line}" | ${AWK} '{print $1}'
+		return 0
+	fi
+
+	major=${first}
+
+	while [ ${major} -le ${max} ]; do
+		excluded=false
+		for exclude in $*; do
+			if [ ${major} -eq ${exclude} ]; then
+				excluded=true
+				break
+			fi
+		done
+
+		if ! ${excluded} && \
+			! grep -q "^ *${major} " /proc/devices && \
+			! sed -e 's/#.*//g' \
+				-e '/@CNXTTARGET@serial/d' \
+				-e '/ttyS@CNXTSERDEV@$/d' \
+				-e '/@CNXTTARGET@usbdcp/d' \
+				-e '/@CNXTTARGET@osspec/d' \
+				-e '/@CNXTTARGET@diag/d' \
+				-e '/@CNXTTARGET@scr/d' \
+				${modulesconf} | grep -q "^alias[ 	][ 	]*char-major-${major}"
+			then
+				break
+		fi
+
+		let major++
+	done
+
+	if [ ${major} -le ${max} ]; then
+		echo ${major}
+		return 0
+	else
+		echo 1>&2 "$0: Cannot find major device number for ${device} in range ${first}-${max}"
+		return 1
+	fi
+}
+
+devfsd_running()
+{
+	ps -e | grep -q 'devfsd$'
+}
+
+modulesconf_filter_mine()
+{
+    sed \
+	-e '/^alias.*@CNXTTARGET@serial/d' \
+	-e '/^alias.*ttyS@CNXTSERDEV@$/d' \
+	-e '/^options.*@CNXTTARGET@serial/d' \
+	-e '/^probeall.*ttyS@CNXTSERDEV@[ 	]/d' \
+	-e '/^probeall.*@CNXTTARGET@serial/d' \
+	-e '/^below[ 	]*@CNXTTARGET@hw/d' \
+	-e '/^alias.*@CNXTTARGET@usbdcp/d' \
+	-e '/^options.*@CNXTTARGET@usbdcp/d' \
+	-e '/^alias.*@CNXTTARGET@osspec/d' \
+	-e '/^options.*@CNXTTARGET@osspec/d' \
+	-e '/^alias.*@CNXTTARGET@diag/d' \
+	-e '/^alias.*@CNXTTARGET@scr/d' \
+	-e '/^options.*@CNXTTARGET@scr/d'
+}
+
+modprobeconf_filter_mine()
+{
+    sed \
+	-e '/^alias.*@CNXTTARGET@serial/d' \
+	-e '/^alias.*ttyS@CNXTSERDEV@$/d' \
+	-e '/^options.*@CNXTTARGET@serial/d' \
+	-e '/^install.*ttyS@CNXTSERDEV@[ 	]/d' \
+	-e '/^install[ 	]*@CNXTTARGET@serial/d' \
+	-e '/^remove[ 	]*@CNXTTARGET@serial/d' \
+	-e '/^install[ 	]*@CNXTTARGET@usbdcp/d' \
+	-e '/^remove[ 	]*@CNXTTARGET@usbdcp/d' \
+	-e '/^install[ 	]*@CNXTTARGET@osspec/d' \
+	-e '/^remove[ 	]*@CNXTTARGET@osspec/d' \
+	-e '/^install[ 	]*@CNXTTARGET@hw/d' \
+	-e '/^remove[ 	]*@CNXTTARGET@hw/d' \
+	-e '/^install.*@CNXTTARGET@usbdcp/d' \
+	-e '/^alias.*@CNXTTARGET@usbdcp/d' \
+	-e '/^options.*@CNXTTARGET@usbdcp/d' \
+	-e '/^alias.*@CNXTTARGET@osspec/d' \
+	-e '/^options.*@CNXTTARGET@osspec/d' \
+	-e '/^alias.*@CNXTTARGET@diag/d' \
+	-e '/^alias.*@CNXTTARGET@scr/d' \
+	-e '/^options.*@CNXTTARGET@scr/d' \
+	-e '/^alias.*symbol:.*@CNXTTARGET@hda/d'
+}
+
+filter_none()
+{
+	cat
+}
+
+set_modprobeconf()
+{
+	modprobeconf=/etc/modprobe.conf
+	if [ -f "${modprobeconf}.local" ]; then
+		# SuSE 9.0
+		modprobeconf="${modprobeconf}.local"
+	fi
+	outmodprobeconf=/var/run/cnxtmodconf.$$
+	outmodprobeconf_filter=y
+}
+
+module_settings()
+{
+	if [ -f /etc/modules.conf ]; then
+		modulesconf=/etc/modules.conf
+		if [ -f "${modulesconf}.local" ]; then
+			# SuSE 9.0
+			modulesconf="${modulesconf}.local"
+		fi
+	elif [ -f /etc/conf.modules ]; then
+		modulesconf=/etc/conf.modules
+	else
+		# create /etc/modules.conf if it doesn't exist
+		modulesconf=/etc/modules.conf
+		touch ${modulesconf}
+	fi
+
+	UPDATE_MODULES_PATH="`which update-modules 2>&1`"
+	if [ $? -ne 0 ]; then
+		UPDATE_MODULES_PATH=
+	fi
+
+	if [ -d /etc/modutils ] && [ -n "${UPDATE_MODULES_PATH}" ]; then
+		# Debian
+		outmodulesconf=/etc/modutils/@CNXTTARGET@
+	elif [ -d /etc/modules.d ] && [ -n "${UPDATE_MODULES_PATH}" ]; then
+		# Gentoo
+		outmodulesconf=/etc/modules.d/@CNXTTARGET@
+	else
+		outmodulesconf=/var/run/cnxtmodconf.$$
+	fi
+
+	if [ -f /etc/modprobe.conf ]; then
+		set_modprobeconf
+	else
+		if [ -d /etc/modprobe.d ]; then
+			outmodprobeconf=/etc/modprobe.d/@CNXTTARGET@
+			outmodprobeconf_filter=n
+		else
+			if [ ! -e /etc/modprobe.conf ] && which generate-modprobe.conf >/dev/null 2>&1; then
+				# create /etc/modprobe.conf if it doesn't exist
+				touch ${modprobeconf}
+				set_modprobeconf
+			fi
+		fi
+	fi
+}
+
+update_modulesconf()
+{
+	f="$1"
+	filter="$2"
+	shift; shift
+
+	if [ -n "${UPDATE_MODULES_PATH}" ] && ! grep -q 'command is deprecated' "${UPDATE_MODULES_PATH}"; then
+		update-modules
+	else
+		if ("$@" "${modulesconf}" | "${filter}"; cat ${f}) > ${modulesconf}.$$; then
+			if ! cmp --silent ${modulesconf}.$$ ${modulesconf}; then
+				if ! cp ${modulesconf}.$$ ${modulesconf}; then
+					rm -f ${modulesconf}.$$ ${f}
+					exit 1
+				fi
+			fi
+		fi
+
+		rm -f ${modulesconf}.$$
+		if [ "${f}" != "/dev/null" ]; then
+			rm -f ${f}
+		fi  
+	fi
+}
+
+update_modprobeconf()
+{
+	f="$1"
+	filter="$2"
+	shift; shift
+	
+	if [ "${modprobeconf_filter}" = "n" ] || [ -z "${modprobeconf}" ]; then
+		return
+	fi
+
+	if ("$@" "${modprobeconf}" | "${filter}"; cat ${f}) > ${modprobeconf}.$$; then
+		if ! cmp --silent ${modprobeconf}.$$ ${modprobeconf}; then
+			if ! cp ${modprobeconf}.$$ ${modprobeconf}; then
+				rm -f ${modprobeconf}.$$ ${f}
+				exit 1
+			fi
+		fi
+	fi
+
+	rm -f ${modprobeconf}.$$
+	if [ "${f}" != "/dev/null" ]; then
+		rm -f ${f}
+	fi  
+}
+
+unconfigure_serial()
+{
+	rm -f /etc/modules.d/@CNXTTARGET@ /etc/modules.d/@CNXTTARGET@.conflicts \
+			/etc/modutils/@CNXTTARGET@ /etc/modutils/@CNXTTARGET@.conflicts \
+			/etc/modprobe.d/@CNXTTARGET@ /etc/modprobe.d/@CNXTTARGET@.conflicts
+
+	update_modulesconf /dev/null modulesconf_filter_mine grep -v "# temporarily disabled by @CNXTTARGET@"
+	update_modprobeconf /dev/null modprobeconf_filter_mine grep -v "# temporarily disabled by @CNXTTARGET@"
+
+	if [ -d /etc/devfs/conf.d ]; then
+		if [ -f /etc/devfs/conf.d/@CNXTTARGET@.conf ]; then
+			rm -f /etc/devfs/conf.d/@CNXTTARGET@.conf
+			which update-devfsd >/dev/null 2>&1 && update-devfsd
+			killall -HUP devfsd 2>/dev/null
+		fi
+	else
+		if [ -f /etc/devfsd.conf ]; then
+			if sed -e '/^REGISTER.*ttyS*@CNXTSERDEV@[0-9]/d' -e '/^LOOKUP.*ttyS@CNXTSERDEV@[0-9]/d' \
+					< /etc/devfsd.conf > /etc/devfsd.conf.$$; then
+				cp /etc/devfsd.conf.$$ /etc/devfsd.conf
+			fi
+			rm -f /etc/devfsd.conf.$$
+			killall -HUP devfsd 2>/dev/null
+		fi
+	fi
+
+	if ! devfsd_running; then
+		rm -f /dev/@CNXTTARGET@dcp[0-9]*
+		rm -f /dev/@CNXTTARGET@diag[0-9]* /dev/@CNXTTARGET@diagdmp
+		rm -f /dev/ttyS@CNXTSERDEV@[0-9]*
+		rm -f /dev/cua@CNXTSERDEV@[0-9]*
+	fi
+
+	if [ -h /dev/modem ] && /bin/ls -l /dev/modem 2>/dev/null | ${AWK} '{print $11}' | egrep -q '(ttyS|cua)@CNXTSERDEV@[0-9][0-9]*'; then
+		rm -f /dev/modem
+	fi
+
+	rm -f /etc/udev/rules.d/00-@CNXTTARGET@.rules
+}
+
+mod_aliases_and_options()
+{
+	if [ "@CNXTDRIVER@" = "dgc" ]; then
+		usbdcpargs=""
+		if [ -n "${cnxtdcp_major}" ]; then
+			echo "alias char-major-${cnxtdcp_major} @CNXTTARGET@usbdcp"
+			if [ "$1" = modprobeconf ]; then
+				echo "alias char-major-${cnxtdcp_major}-* @CNXTTARGET@usbdcp"
+			fi
+			usbdcpargs="${usbdcpargs} dcpmajor=${cnxtdcp_major}"
+		fi
+		if [ -n "${usbdcpargs}" ]; then
+			echo "options @CNXTTARGET@usbdcp${usbdcpargs}"
+		fi
+		return 0;
+	fi
+
+	echo "alias /dev/ttyS@CNXTSERDEV@[0-9]* /dev/ttyS@CNXTSERDEV@"
+	echo "alias /dev/modem /dev/ttyS@CNXTSERDEV@"
+	echo "alias char-major-${cnxttty_major} /dev/ttyS@CNXTSERDEV@"
+	if [ "$1" = modulesconf ]; then
+		echo "alias /dev/cua@CNXTSERDEV@[0-9]* /dev/ttyS@CNXTSERDEV@"
+		echo "alias char-major-${cnxtcua_major} /dev/ttyS@CNXTSERDEV@"
+		echo "options @CNXTTARGET@serial serialmajor=${cnxttty_major} calloutmajor=${cnxtcua_major}"
+	else
+		echo "alias char-major-${cnxttty_major}-* /dev/ttyS@CNXTSERDEV@"
+		echo "options @CNXTTARGET@serial serialmajor=${cnxttty_major}"
+	fi
+	osspecargs=""
+	if [ -n "${cnxtdcp_major}" ]; then
+		echo "alias char-major-${cnxtdcp_major} @CNXTTARGET@osspec"
+		if [ "$1" = modprobeconf ]; then
+			echo "alias char-major-${cnxtdcp_major}-* @CNXTTARGET@osspec"
+		fi
+		osspecargs="${osspecargs} dcpmajor=${cnxtdcp_major}"
+	fi
+	if [ -n "${cnxtdiag_major}" ]; then
+		echo "alias /dev/@CNXTTARGET@diag @CNXTTARGET@osspec"
+		echo "alias /dev/@CNXTTARGET@diag* /dev/@CNXTTARGET@diag"
+		echo "alias char-major-${cnxtdiag_major} /dev/@CNXTTARGET@diag"
+		if [ "$1" = modprobeconf ]; then
+			echo "alias char-major-${cnxtdiag_major}-* /dev/@CNXTTARGET@diag"
+		fi
+		osspecargs="${osspecargs} diagmajor=${cnxtdiag_major}"
+	fi
+	if [ -n "${cnxtscr_major}" ]; then
+		echo "alias ${scrdevicename} @CNXTTARGET@osspec"
+		echo "alias char-major-${cnxtscr_major} @CNXTTARGET@osspec"
+		if [ "$1" = modprobeconf ]; then
+			echo "alias char-major-${cnxtscr_major}-* @CNXTTARGET@osspec"
+		fi
+		osspecargs="${osspecargs} scrmajor=${cnxtscr_major}"
+	fi
+	if [ -n "${osspecargs}" ]; then
+		echo "options @CNXTTARGET@osspec${osspecargs}"
+	fi
+}
+
+configure_serial()
+{
+	cnxttty_major="`choose_major ttyS@CNXTSERDEV@`"
+
+	if [ -z ${cnxttty_major} ]; then
+		exit 1
+	fi
+
+	if [ "`sysctl -n kernel.modprobe`" = "/bin/true" ]; then
+		echo ""
+		echo "WARNING: kernel.modprobe parameter set to /sbin/true; automatic module loading will not work!"
+		if [ "${ksyms}" = "kallsyms" ]; then
+			echo "The cause of this problem is usually a check for /proc/ksyms (2.4) instead of /proc/kallsyms (2.6)"
+			if [ -e /etc/rc.d/rc.sysinit ]; then
+				echo "possibly in /etc/rc.d/rc.sysinit"
+			else
+				echo "in the system's startup scripts"
+			fi
+		fi
+	fi
+
+	cnxtcua_major="`choose_major cua@CNXTSERDEV@ ${cnxttty_major}`"
+	if [ -z ${cnxtcua_major} ]; then
+		exit 1
+	fi
+
+	if dcp_supported; then
+		cnxtdcp_major="`choose_major @CNXTTARGET@dcp ${cnxttty_major} ${cnxtcua_major}`"
+		if [ -z ${cnxtdcp_major} ]; then
+			exit 1
+		fi
+	else
+		cnxtdcp_major=""
+	fi
+
+	if diag_supported; then
+		cnxtdiag_major="`choose_major @CNXTTARGET@diag ${cnxttty_major} ${cnxtcua_major} ${cnxtdcp_major}`"
+		if [ -z ${cnxtdiag_major} ]; then
+			exit 1
+		fi
+	else
+		cnxtdiag_major=""
+	fi
+
+	if old_scr_supported; then
+		scrdevicename=/dev/@CNXTTARGET@scr
+
+		cnxtscr_major="`choose_major @CNXTTARGET@scr ${cnxttty_major} ${cnxtcua_major} ${cnxtdcp_major} ${cnxtdiag_major}`"
+		if [ -z ${cnxtscr_major} ]; then
+			exit 1
+		fi
+	fi
+
+	(
+		mod_aliases_and_options modulesconf
+#		if [ "@CNXTDRIVER@" = "dgc" ]; then
+# 			echo "below cdc_acm dgcusbdcp" # XXX
+#		fi
+		if [ "@CNXTDRIVER@" = "hsf" ]; then
+			echo "probeall /dev/ttyS@CNXTSERDEV@ @CNXTTARGET@pcibasic2 @CNXTTARGET@pcibasic3 @CNXTTARGET@mc97ich @CNXTTARGET@mc97via @CNXTTARGET@mc97ali @CNXTTARGET@mc97ati @CNXTTARGET@mc97sis @CNXTTARGET@usbcd2 snd_hda_intel"
+#			echo "probeall @CNXTTARGET@serial @CNXTTARGET@pcibasic2 @CNXTTARGET@pcibasic3 @CNXTTARGET@mc97ich @CNXTTARGET@mc97via @CNXTTARGET@mc97ali @CNXTTARGET@mc97ati @CNXTTARGET@mc97sis @CNXTTARGET@usbcd2"
+			if [ -e /etc/modutils/1devfsd ]; then
+				echo "probeall /dev/tts @CNXTTARGET@pcibasic2 @CNXTTARGET@pcibasic3 @CNXTTARGET@mc97ich @CNXTTARGET@mc97via @CNXTTARGET@mc97ali @CNXTTARGET@mc97ati @CNXTTARGET@mc97sis @CNXTTARGET@usbcd2 snd_hda_intel"
+			fi
+		fi
+		if [ "@CNXTDRIVER@" = "hcf" ]; then
+			echo "probeall /dev/ttyS@CNXTSERDEV@ @CNXTTARGET@hw"
+#			echo "probeall @CNXTTARGET@serial @CNXTTARGET@hw"
+			if [ -e /etc/modutils/1devfsd ]; then
+				echo "probeall /dev/tts @CNXTTARGET@hw"
+			fi
+		fi
+
+		case "${parm_hwinst[${unit}]}" in
+		PCI-4321:*)
+			# RipTide HCF
+			echo "below @CNXTTARGET@hw riptidelow"
+			;;
+		*)
+			;;
+		esac
+	) > ${outmodulesconf}
+	update_modulesconf ${outmodulesconf} modulesconf_filter_mine cat
+
+	if [ -n "${outmodprobeconf}" ]; then
+		(
+			mod_aliases_and_options modprobeconf
+			if [ "@CNXTDRIVER@" = "dgc" ]; then
+				echo "install cdc_acm /sbin/modprobe dgcusbdcp; /sbin/modprobe --ignore-install cdc_acm"
+			fi
+			if [ "@CNXTDRIVER@" = "hsf" ]; then
+				echo 'install /dev/ttyS@CNXTSERDEV@ /sbin/modprobe @CNXTTARGET@pcibasic2; /sbin/modprobe @CNXTTARGET@pcibasic3; /sbin/modprobe @CNXTTARGET@mc97ich; /sbin/modprobe @CNXTTARGET@mc97via; /sbin/modprobe @CNXTTARGET@mc97ali; /sbin/modprobe @CNXTTARGET@mc97ati; /sbin/modprobe @CNXTTARGET@mc97sis; [ -e /lib/modules/`uname -r`/extra/@CNXTTARGET@usbcd2.ko ] && /sbin/modprobe @CNXTTARGET@usbcd2; /sbin/modprobe snd_hda_intel; /bin/true'
+				# On some systems, even if the modules dependencies are up to date, these lines are not loaded
+				# from modules.symbols
+				echo 'alias symbol:cnxthwhda_probe @CNXTTARGET@hda'
+				echo 'alias symbol:cnxthwhda_resume @CNXTTARGET@hda'
+				echo 'alias symbol:cnxthwhda_suspend @CNXTTARGET@hda'
+				if [ -e /etc/modprobe.d/devfsd ]; then
+					echo 'install /dev/serial /sbin/modprobe @CNXTTARGET@pcibasic2; /sbin/modprobe @CNXTTARGET@pcibasic3; /sbin/modprobe @CNXTTARGET@mc97ich; /sbin/modprobe @CNXTTARGET@mc97via; /sbin/modprobe @CNXTTARGET@mc97ali; /sbin/modprobe @CNXTTARGET@mc97ati; /sbin/modprobe @CNXTTARGET@mc97sis; [ -e /lib/modules/`uname -r`/extra/@CNXTTARGET@usbcd2.ko ] && /sbin/modprobe @CNXTTARGET@usbcd2 snd_hda_intel; /bin/true'
+				fi
+			fi
+			if [ "@CNXTDRIVER@" = "hcf" ]; then
+				echo "install /dev/ttyS@CNXTSERDEV@ /sbin/modprobe @CNXTTARGET@hw"
+				if [ -e /etc/modprobe.d/devfsd ]; then
+					echo "install /dev/serial /sbin/modprobe @CNXTTARGET@hw"
+				fi
+			fi
+
+			case "${parm_hwinst[${unit}]}" in
+			PCI-4321:*)
+				# RipTide HCF
+				echo "install @CNXTTARGET@hw /sbin/modprobe riptidelow; /sbin/modprobe --ignore-install @CNXTTARGET@hw"
+				echo "remove @CNXTTARGET@hw /sbin/modprobe -r --ignore-remove @CNXTTARGET@hw && /sbin/modprobe -r riptidelow; /bin/true"
+				;;
+			*)
+				;;
+			esac
+
+		) > ${outmodprobeconf}
+		update_modprobeconf ${outmodprobeconf} modprobeconf_filter_mine cat
+	fi
+
+  if [ "@CNXTDRIVER@" != "dgc" ]; then
+	if [ -d /etc/devfs/conf.d ]; then
+		# we use nice to bypass the stupid check in devfsd (Hi Richard!)
+		# that prevents direct execution of modprobe (in favor of MODLOAD,
+		# which unfortunately doesn't provide a way to specify a module
+		# name other than the device itself and under Mandrake at least,
+		# the ttyS* alias in /etc/modules.devfs overrides our own alias
+		# in modules.conf)
+		echo 'LOOKUP	^(ttyS@CNXTSERDEV@[0-9]|modem$) EXECUTE nice /sbin/modprobe /dev/ttyS@CNXTSERDEV@
+REGISTER	^ttyS@CNXTSERDEV@0$ CFUNCTION GLOBAL symlink $devname modem
+UNREGISTER	^ttyS@CNXTSERDEV@0$ CFUNCTION GLOBAL unlink modem' \
+			> /etc/devfs/conf.d/@CNXTTARGET@.conf
+		rm -f /dev/modem
+		which update-devfsd >/dev/null 2>&1 && update-devfsd
+		killall -HUP devfsd 2>/dev/null
+	else
+		if [ -f /etc/devfsd.conf ]; then
+			if (
+				sed -e '/REGISTER.*ttyS*@CNXTSERDEV@[0-9]/d' -e '/^LOOKUP.*ttyS@CNXTSERDEV@[0-9]/d'
+				echo 'LOOKUP	^(ttyS@CNXTSERDEV@[0-9]|modem$) EXECUTE nice /sbin/modprobe /dev/ttyS@CNXTSERDEV@
+REGISTER	^ttyS@CNXTSERDEV@0$ CFUNCTION GLOBAL symlink $devname modem
+UNREGISTER	^ttyS@CNXTSERDEV@0$ CFUNCTION GLOBAL unlink modem'
+			) < /etc/devfsd.conf > /etc/devfsd.conf.$$; then
+				cp /etc/devfsd.conf.$$ /etc/devfsd.conf
+			fi
+			rm -f /etc/devfsd.conf.$$
+			rm -f /dev/modem
+			killall -HUP devfsd 2>/dev/null
+		fi
+	fi
+
+	ttydevicename=/dev/ttyS@CNXTSERDEV@0
+	cuadevicename=/dev/cua@CNXTSERDEV@0
+
+	if [ -n "${scrdevicename}" ]; then
+		rm -f ${scrdevicename}
+		mknod -m 600 ${scrdevicename} c ${cnxtscr_major} 0 || exit 1
+	fi
+  fi
+	if ! devfsd_running; then
+
+		rm -f /dev/@CNXTTARGET@dcp[0-9]*
+		rm -f /dev/@CNXTTARGET@diag[0-9]* /dev/@CNXTTARGET@diagdmp
+		rm -f /dev/ttyS@CNXTSERDEV@[0-9]*
+		rm -f /dev/cua@CNXTSERDEV@[0-9]*
+
+		if [ -n "${cnxtdcp_major}" ]; then
+			u=0
+			while [ $u -lt @CNXTMAXMDM@ ]; do
+		    		mknod -m 666 /dev/@CNXTTARGET@dcp${u} c ${cnxtdcp_major} ${u} || exit 1
+				let u++
+			done
+		fi
+
+		if [ -n "${cnxtdiag_major}" ]; then
+			u=0
+			while [ $u -lt @CNXTMAXMDM@ ]; do
+		    		mknod -m 666 /dev/@CNXTTARGET@diag${u} c ${cnxtdiag_major} ${u} || exit 1
+				let u++
+			done
+			mknod -m 666 /dev/@CNXTTARGET@diagdmp c ${cnxtdiag_major} @CNXTDIAGDMPMINOR@ || exit 1
+		fi
+
+		cnxt_minor=@CNXTSERIALMINOR@
+
+  if [ "@CNXTDRIVER@" != "dgc" ]; then
+		u=0
+		while [ $u -lt @CNXTMAXMDM@ ]; do
+		    	mknod -m 666 /dev/ttyS@CNXTSERDEV@${u} c ${cnxttty_major} ${cnxt_minor} || exit 1
+			mknod -m 666 /dev/cua@CNXTSERDEV@${u} c ${cnxtcua_major} ${cnxt_minor} || exit 1
+			let cnxt_minor++
+			let u++
+		done
+
+		if [ -h /dev/modem ] && /bin/ls -l /dev/modem 2>/dev/null | ${AWK} '{print $11}' | egrep -q '(ttyS|cua)@CNXTSERDEV@[0-9][0-9]*'; then
+			rm -f /dev/modem
+		fi
+
+		if [ -e /dev/modem ]; then
+			if ! fuser /dev/modem >/dev/null 2>&1; then
+				rm -f /dev/modem.old
+				mv /dev/modem /dev/modem.old
+
+				echo "WARNING: renamed existing /dev/modem to /dev/modem.old:"
+				echo ""
+				/bin/ls -l /dev/modem.old
+			fi
+		fi
+
+		if [ ! -e /dev/modem ]; then
+			ln -sf /dev/ttyS@CNXTSERDEV@0 /dev/modem
+		fi
+	fi
+  fi
+
+	if [ -d /etc/udev/rules.d ]; then
+		rm -f /etc/udev/rules.d/00-@CNXTTARGET@.rules
+		if [ "@CNXTDRIVER@" = "dgc" ]; then
+			echo 'KERNEL=="ttyACM0", SYMLINK="modem"' > /etc/udev/rules.d/00-@CNXTTARGET@.rules
+		else
+		echo 'KERNEL=="ttyS@CNXTSERDEV@0", SYMLINK="modem"' > /etc/udev/rules.d/00-@CNXTTARGET@.rules
+	fi
+	fi
+
+	touch "${cnxtetcdir}/.serial_configured"
+}
+
+disable_conflicting_modules()
+{
+	@CNXTTARGET@modconflicts "/lib/modules/${OSKERNVERS}" > "${cnxtetcdir}/.modconflicts-${OSKERNVERS}"
+
+    case "${OSKERNVERS}" in
+    2.[234].*)
+		while read mod mine; do
+			echo "alias $mod off # temporarily disabled by @CNXTTARGET@ - conflicts with $mine"
+		done < "${cnxtetcdir}/.modconflicts-${OSKERNVERS}" > ${outmodulesconf}.conflicts
+		update_modulesconf ${outmodulesconf}.conflicts filter_none grep -v "# temporarily disabled by @CNXTTARGET@"
+		;;
+	*)
+		while read mod mine; do
+			echo "install $mod /bin/true # temporarily disabled by @CNXTTARGET@ - conflicts with $mine"
+		done < "${cnxtetcdir}/.modconflicts-${OSKERNVERS}" > ${outmodprobeconf}.conflicts
+		update_modprobeconf ${outmodprobeconf}.conflicts filter_none grep -v "# temporarily disabled by @CNXTTARGET@"
+		;;
+	esac
+
+	while read mod mine; do
+		(rmmod $mod &) >/dev/null 2>&1
+	done < "${cnxtetcdir}/.modconflicts-${OSKERNVERS}"
+}
+
+unconfigure_rcscript()
+{
+	[ -d /etc/init.d ] || return 0
+
+	if which chkconfig >/dev/null 2>&1; then
+		chkconfig @CNXTTARGET@ off >/dev/null 2>&1
+		chkconfig --del @CNXTTARGET@ >/dev/null 2>&1
+	else
+		if [ -d /etc/runlevels ]; then
+			# Gentoo
+			rc-update del @CNXTTARGET@ >/dev/null 2>&1
+		else
+			rm -f /etc/rc*.d/[SK][0-9]*@CNXTTARGET@
+		fi
+	fi
+
+	rm -f /etc/init.d/@CNXTTARGET@ @CNXTSBINDIR@/rc@CNXTTARGET@
+}
+
+configure_rcscript()
+{
+	[ -d /etc/init.d ] || return 0
+
+	unconfigure_rcscript
+
+	(
+		if [ -d /etc/runlevels ]; then
+			# Gentoo
+			echo "#!/sbin/runscript"
+		else
+			echo "#!/bin/sh"
+		fi
+
+		cat @CNXTLIBDIR@/rc@CNXTTARGET@
+	) > @CNXTSBINDIR@/rc@CNXTTARGET@
+	chmod 700 @CNXTSBINDIR@/rc@CNXTTARGET@ || return 1
+
+	ln -s @CNXTSBINDIR@/rc@CNXTTARGET@ /etc/init.d/@CNXTTARGET@ || return 1
+
+	if which chkconfig >/dev/null 2>&1; then
+		chkconfig --add @CNXTTARGET@ >/dev/null || return 1
+		chkconfig @CNXTTARGET@ on
+	else
+		if [ -d /etc/runlevels ]; then
+			# Gentoo
+			rc-update add @CNXTTARGET@ default >/dev/null 2>&1 || return 1
+		else
+			for i in 0 1 2 3 4 5 6; do
+				[ -d /etc/rc${i}.d ] || continue
+
+				case ${i} in
+				2 | 3 | 4 | 5)
+					ln -s /etc/init.d/@CNXTTARGET@ /etc/rc${i}.d/S09@CNXTTARGET@
+					;;
+				*)
+					ln -s /etc/init.d/@CNXTTARGET@ /etc/rc${i}.d/K91@CNXTTARGET@
+					;;
+				esac
+			done
+		fi
+	fi
+}
+
+identify_system()
+{
+	OSDISTNAME=unknown
+	OSDISTIDNT=unknown
+	OSDISTVERS=unknown
+	KERNVERSUFFIX=
+
+	if [ -f /etc/knoppix-version ]; then
+		OSDISTNAME=Knoppix
+		OSDISTIDNT=knoppix
+		OSDISTVERS="`${AWK} '{print $1; exit}' /etc/knoppix-version`"
+		# The same kernel version can be used on multiple versions of Knoppix but
+		# they are not built with the exact same kernel source so we must use
+		# the version of Knoppix to identify the right pre-built modules
+		KERNVERSUFFIX="-kpx${OSDISTVERS}"
+	elif [ -f /etc/debian_version ]; then
+		if [ -f /etc/motd ] && grep -q MEPIS /etc/motd; then
+			OSDISTNAME=SimplyMEPIS
+			OSDISTIDNT=mepis
+			if dpkg -p mepis-oscenter > "${TMPDIR}/mepis_version.$$" 2>&1; then
+				OSDISTVERS="`grep ^Version "${TMPDIR}/mepis_version.$$" | ${AWK} '{print $2}' | ${AWK} -F - '{print $1}'`"
+			else
+				OSDISTVERS="`${AWK} '{print $2; exit}' /etc/motd`"
+			fi
+			rm -f "${TMPDIR}/mepis_version.$$"
+			if [ "${OSDISTVERS}" = "3.4" ]; then
+				# This distribution has multiple kernels with the same version
+				# but are compiled with different options, the date the kernel
+				# was compiled is used to identify the right pre-compiled modules
+				KERNVERSUFFIX="-`uname -v | ${AWK} '{print $4 $5}'`"
+			fi
+		elif [ -f /etc/issue.net ] && grep -q Ubuntu /etc/issue.net; then
+			OSDISTNAME=Ubuntu
+			OSDISTIDNT=ubuntu
+			OSDISTVERS="`${AWK} '{print $2; exit}' /etc/issue.net`"
+			if [ -d /usr/share/kubuntu-default-settings ]; then
+				OSDISTVERS="Kubuntu-${OSDISTVERS}"
+			fi
+		elif [ -f /etc/xandros-desktop-version ]; then
+			OSDISTNAME=Xandros
+			OSDISTIDNT=xandros
+			OSDISTVERS="`grep ^Version: /etc/xandros-desktop-version | ${AWK} '{print $5; exit}'`"
+		elif [ -f /etc/linspire-version ]; then
+			OSDISTNAME=Linspire
+			OSDISTIDNT=linspire
+			OSDISTVERS="`grep ^Version: /etc/linspire-version | ${AWK} '{print $2; exit}'`"
+		else
+			OSDISTNAME=Debian
+			OSDISTIDNT=deb
+			read OSDISTVERS < /etc/debian_version
+		fi
+	elif [ -f /etc/slackware-version ]; then
+		OSDISTNAME=Slackware
+		OSDISTIDNT=slack
+		OSDISTVERS="`${AWK} '{print $1; exit}' /etc/slackware-version`"
+	elif [ -f /etc/conectiva-release ]; then
+		OSDISTNAME=Conectiva
+		OSDISTIDNT=conectiva
+	elif [ -f /etc/SuSE-release ]; then
+		OSDISTNAME=SuSE
+		OSDISTIDNT=suse
+		OSDISTVERS="`sed -n '/^VERSION/s/^.*=[ 	]*//p' < /etc/SuSE-release`"
+		if grep -q "Sun Java Desktop" /etc/SuSE-release; then
+			OSDISTVERS="JDS${OSDISTVERS}"
+		fi
+	elif [ -f /etc/mandrake-release ]; then
+		if [ -f /etc/mandriva-release ]; then
+			OSDISTNAME=Mandriva
+			OSDISTIDNT=mdv
+		else
+			OSDISTNAME=Mandrake
+			OSDISTIDNT=mdk
+		fi
+	#it would be better to use rpm instead of sed but it doesn't work
+	#recursively (due to database locking) when this script is called during
+	#the package's installation
+	#	OSDISTVERS="`rpm -q --queryformat '%{VERSION}\n' mandrake-release | sort -r | head -n 1`"
+		OSDISTVERS="`sed -n '/release /{s/^.*release  *\([^ ]*\)/\1/;s/ .*//;p;q;}' < /etc/mandrake-release`"
+	#elif [ -f /etc/yellowdog-release ]; then
+	#	OSDISTNAME=YellowDog
+	elif [ -f /etc/turbolinux-release ]; then
+		OSDISTNAME=Turbolinux
+		OSDISTIDNT=turbo
+		OSDISTVERS="`sed -n '/release /{s/^.*release  *\([^ ]*\)/\1/;s/ .*//;p;q;}' < /etc/turbolinux-release`"
+		if [ -z "${OSDISTVERS}" ]; then
+			OSDISTVERS="`sed -n '/[a-zA-Z][a-zA-Z]* /{s/^.*[a-zA-Z][a-zA-Z]*  *\([^ ]*\)/\1/;s/ .*//;p;q;}' < /etc/turbolinux-release`"
+		fi
+	elif [ -f /etc/freedows-release ]; then
+		OSDISTNAME=Freedows
+		OSDISTIDNT=fs
+		OSDISTVERS="`sed -n '/release /{s/^.*release  *\([^ ]*\)/\1/;s/ .*//;p;q;}' < /etc/freedows-release`"
+	elif [ -f /etc/fedora-release ]; then
+		OSDISTNAME=Fedora
+		OSDISTIDNT=fdr
+		OSDISTVERS="`sed -n '/release /{s/^.*release  *\([^ ]*\)/\1/;s/ .*//;p;q;}' < /etc/fedora-release`"
+	elif [ -f /etc/redhat-release ]; then
+		OSDISTNAME=RedHat
+		OSDISTIDNT=rh
+		OSDISTVERS="`sed -n '/release /{s/^.*release  *\([^ ]*\)/\1/;s/ .*//;p;q;}' < /etc/redhat-release`"
+		if grep -q "Enterprise Linux" /etc/redhat-release || grep -q "CentOS" /etc/redhat-release; then
+			OSDISTVERS="EL${OSDISTVERS}"
+		fi
+	elif [ -d /var/lib/LST ]; then
+		OSDISTNAME=Caldera
+		OSDISTIDNT=caldera
+	fi
+
+	OSKERNNAME="`uname -s | tr '[A-Z]' '[a-z]'`"
+	OSKERNARCH="`uname -m`"
+	if [ -r /boot/kernel.h ]; then
+		OSKERNTYPE="`sed -n '/^#define[ 	]__MODULE_KERNEL_/s/^#define[ 	]__MODULE_KERNEL_\([^ 	]*\)[ 	]*.*/\1/p' </boot/kernel.h`"
+	fi
+	if [ -z "${OSKERNTYPE}" ]; then
+		OSKERNTYPE="${OSKERNARCH}"
+	fi
+	OSKERNVERS="`uname -r`"
+
+	case "${OSKERNVERS}" in
+	2.[234].*)
+		KO=o
+		ksyms=ksyms
+		;;
+	*)
+		KO=ko
+		ksyms=kallsyms
+		;;
+	esac
+
+	if uname -v | grep -q SMP; then
+		OSKERNSMP="-SMP"
+	else
+		OSKERNSMP=""
+	fi
+
+	if [ -r /proc/ksyms ] && [ `egrep -c '_[0-9a-f]{8}$' /proc/ksyms` -gt 100 ]; then
+		OSKERNMODV="-MODVERS"
+	else
+		OSKERNMODV=""
+	fi
+
+	if [ -r "${cnxtetcdir}/package" ]; then
+		read PACKTYPE PACKSRCDIR < "${cnxtetcdir}/package"
+	else
+		PACKTYPE="unknown"
+		PACKSRCDIR="unknown"
+	fi
+
+	echo "$OSKERNNAME-$OSKERNARCH($OSKERNTYPE)-$OSKERNVERS$OSKERNSMP$OSKERNMODV $OSDISTNAME-$OSDISTVERS"
+}
+
+dump_cmd()
+{
+	echo ""
+	echo "${dumpprefix} $*"
+	eval $@
+}
+
+dump_file()
+{
+	dump_cmd cat -v $@
+}
+
+dump_diagnostics()
+{
+	dumpprefix="+"
+
+	rm -f "${cnxtdiagfile}"
+
+	> "${cnxtdiagfile}" || return $?
+
+	if ! ${noprobe}; then
+		echo ""
+		echo "Probing \"/dev/ttyS@CNXTSERDEV@\"..."
+		(
+			dump_cmd @CNXTTARGET@stop
+			dump_cmd modprobe -v /dev/ttyS@CNXTSERDEV@
+			dump_cmd lsmod
+		) >> "${cnxtdiagfile}" 2>&1
+	fi
+
+	echo ""
+	echo "Dumping system diagnostic information..."
+
+	case "${cnxtdiagfile}" in
+	*longdiag*)
+		longdiag=true
+		;;
+	*)
+		longdiag=false
+		;;
+	esac
+
+	(
+		dump_cmd date
+		dump_cmd $0 --info
+		dump_cmd identify_system
+		dump_cmd uname -a
+
+		dump_cmd gcc -v
+
+		dump_file /proc/version
+		dump_file /proc/cpuinfo
+
+		for f in /etc/*_version /etc/*-version /etc/*-release; do
+			if [ -r "${f}" ]; then
+				dump_file "${f}"
+			fi
+		done
+
+		dump_cmd dmesg
+		if dmesg | grep -qi 'panic'; then
+			dump_cmd dmesg | ksymoops
+		fi
+
+		for f in /var/run/@CNXTTARGET@dcpd*; do
+			if [ -r "${f}" ]; then
+				dump_file "${f}"
+			fi
+		done
+
+		dump_cmd lspci -n
+		dump_cmd lspci -v
+		dump_cmd lspci -n -vvv
+
+		dump_cmd lsusb
+		dump_cmd lsusb -v
+
+		dump_file /proc/bus/usb/devices
+
+		for p in pci cmdline uptime \
+			devices misc filesystems interrupts \
+			iomem ioports dma mtrr \
+			partitions mounts swaps meminfo \
+			stat apm modules ldiscs
+		do
+			dump_file /proc/${p}
+		done
+
+		dump_cmd sysctl -a
+		dump_cmd modprobe -V
+		dump_cmd modprobe -l "*hsf*"
+		dump_cmd modprobe -l "*hcf*"
+		dump_cmd modprobe -l "*rip*"
+		dump_cmd modprobe -l "*dgc*"
+		dump_file "${modulesconf}"
+		for f in /etc/modprobe.d/*; do
+			if [ -r "${f}" ]; then
+				dump_file "${f}"
+			fi
+		done
+		if [ -n "${modprobeconf}" ]; then
+			dump_file "${modprobeconf}"
+		fi
+		dump_cmd depmod -e -a
+
+		dump_file /proc/tty/drivers
+		for f in /proc/tty/driver/*; do
+			if [ -r "${f}" ]; then
+				dump_file "${f}"
+			fi
+		done
+
+		dump_cmd ls -l '/dev/modem*'
+		dump_cmd ls -l '/dev/*@CNXTSERDEV@[0-9]*'
+		dump_cmd ls -l '/dev/ttyS*'
+		dump_cmd ls -l '/dev/tts*'
+
+		dump_file /proc/asound/cards
+		dump_cmd ls '/proc/asound/card*'
+		for f in /proc/asound/card*/codec*; do
+			if [ -r "${f}" ]; then
+				dump_file "${f}"
+			fi
+		done
+
+		dump_cmd "cd ${cnxtnvmdir} && find . -maxdepth 2 -ls"
+		dump_cmd "cd ${cnxtnvmdir} && find dynamic -follow -print -type f -exec cat {} \;"
+
+		dump_cmd ls -lR "${cnxtlibdir}/."
+
+		dump_cmd ls -lR /lib/modules/${OSKERNVERS}/misc /lib/modules/${OSKERNVERS}/extra /lib/modules/${OSKERNVERS}/updates
+
+		if ${longdiag}; then
+			dump_file /lib/modules/${OSKERNVERS}/modules.pcimap
+			dump_file /lib/modules/${OSKERNVERS}/modules.usbmap
+
+			for p in slabinfo ${ksyms}
+			do
+				dump_file /proc/${p}
+			done
+
+			dump_file /lib/modules/${OSKERNVERS}/build/.config
+			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/version.h
+			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/autoconf.h
+			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/autoconf-up.h
+			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/rhconfig.h
+			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/modules/ksyms.ver
+
+			dump_file /boot/vmlinuz.version.h
+			dump_file /boot/vmlinuz.autoconf.h
+			dump_file /boot/vmlinuz.config
+
+			dump_file /boot/kernel.h
+
+			dump_cmd ls -lR /etc/.
+			dump_cmd ls -lR /lib/modules/.
+			dump_cmd ls -lR /boot/.
+
+			dump_cmd ls -l /usr/src/linux/include/.
+			dump_cmd ls -l /usr/src/linux/include/linux/.
+			dump_cmd ls -l /usr/src/linux/include/asm-i386/.
+			dump_cmd ls -l /usr/include/. /usr/src/.
+
+			dump_cmd env
+
+			dump_cmd ps -efw
+
+			dump_cmd sh --version
+			dump_cmd sed --version
+			dump_cmd ${AWK} --version
+			dump_cmd printf --version
+
+			dump_cmd tar --version
+
+			dump_cmd rpm --version
+			dump_cmd rpm --showrc
+			dump_cmd rpm --query --all
+		fi
+
+	) >> "${cnxtdiagfile}" 2>&1
+
+	if [ -f "${cnxtdiagfile}" ]; then
+		echo ""
+		echo "System diagnostic information has been saved to the file:"
+		echo ""
+		ls -l ${cnxtdiagfile}
+		echo ""
+		echo "As it could contain private information about this system, we recommend that"
+		echo "you verify its contents before sending it to third parties."
+	fi
+}
+
+read_unit_parms()
+{
+	parm_regionName[${unit}]="AUTO"
+	parm_regionT35c[${unit}]=""
+	parm_hwprofile[${unit}]="unknown"
+	parm_hwrevision[${unit}]=""
+	parm_hwinst[${unit}]="none"
+	parm_hwid[${unit}]="unknown"
+	parm_licowner[${unit}]="${lastowner}"
+	parm_lickey[${unit}]="00000000"
+	parm_licstatus[${unit}]="unknown"
+
+	# Flush the NVM data to disk to make sure we read up-to-date information
+	echo "1" > ${procdrvdir}/flush_nvm
+
+	if [ ! -d "${procdrvdir}/${unit}" ]; then
+		echo ""
+		echo 1>&2 "Warning: no modem found (unit ${unit})"
+		return 1
+	fi
+
+	read parm_hwprofile[${unit}] < ${procdrvdir}/${unit}/hwprofile
+	read parm_hwrevision[${unit}] < ${procdrvdir}/${unit}/hwrevision
+	read parm_hwinst[${unit}] < ${procdrvdir}/${unit}/hwinst
+
+	if [ ! -d "${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}" ]; then
+		echo ""
+		echo 1>&2 "ERROR: hwinst dir not present: ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}"
+		return 2
+	fi
+
+
+	if [ -f ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/.region_set ]; then
+		read parm_regionT35c[${unit}] < ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/COUNTRY_CODE
+		parm_regionName[${unit}]="`T35c_to_name \"${parm_regionT35c[${unit}]}\"`"
+	fi
+
+	if ${isfreeversion}; then
+		sawfreelicenses=true
+	else
+		if [ -e ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/HARDWARE_ID ]; then
+			read hwid < ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/HARDWARE_ID
+			sum="`echo \"${hwid}\" | md5sum | cut -c1-4 | tr '[a-f]' '[A-F]'`"
+			parm_hwid[${unit}]="${sum}-`echo \"${hwid}\" | sed 's/^\(....\)\(....\)$/\1-\2/'`"
+
+			[ -s ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/LICENSE_OWNER ] &&
+				parm_licowner[${unit}]="`sed 's/"//g' < ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/LICENSE_OWNER`"
+			[ -n "${parm_licowner[${unit}]}" -a "${parm_licowner[${unit}]}" != "unknown" ] && lastowner="${parm_licowner[${unit}]}"
+
+			[ -s ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/LICENSE_KEY ] &&
+				read parm_lickey[${unit}] < ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/LICENSE_KEY
+
+			[ -s ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/LICENSE_STATUS ] &&
+				parm_licstatus[${unit}]="`sed 's/"//g' < ${cnxtnvmdir}/dynamic/${parm_hwinst[${unit}]}/LICENSE_STATUS`"
+			case "${parm_licstatus[${unit}]}" in
+			FREE*)
+				sawfreelicenses=true
+				;;
+			*)
+				;;
+			esac
+		else
+			parm_hwid[${unit}]=""
+		fi
+	fi
+
+	return 0
+}
+
+ensure_driver_present()
+{
+	if [ "@CNXTDRIVER@" = "dgc" ]; then
+		modprobe dgcusbdcp >/dev/null 2>&1 # ensure drv loaded
+		if ! lsmod | grep -q "dgcusbdcp "; then
+			echo ""
+			echo 1>&2 "Warning: @CNXTTARGET@ driver not active"
+			show_module_settings
+			show_conflicting_modules
+			return 1
+		else
+			return 0
+		fi
+	fi
+
+	if [ ! -d ${procdrvdir} ]; then
+		modprobe /dev/ttyS@CNXTSERDEV@ >/dev/null 2>&1 # ensure drv loaded
+		if [ ! -d ${procdrvdir} ]; then
+			echo ""
+			if [ "@CNXTDRIVER@" = "hsf" ]; then
+				echo 1>&2 "Warning: @CNXTTARGET@ driver not active - HDA modems may require reboot"
+			else
+				echo 1>&2 "Warning: @CNXTTARGET@ driver not active"
+			fi
+			show_module_settings
+			show_conflicting_modules
+			return 1
+		fi
+	fi
+
+	if [ "@CNXTDRIVER@" = "hsf" ]; then
+		# temporary workaround
+		awk -F: '/HDA Intel/ {print $1}' /proc/interrupts | while read irq; do
+			if [ -e "/proc/irq/$irq/smp_affinity" ]; then
+				echo 1 > "/proc/irq/$irq/smp_affinity"
+			fi
+		done
+	fi
+
+	return 0
+}
+
+read_parms()
+{
+	sawfreelicenses=false
+	
+	ensure_driver_present || return $?
+	if [ "@CNXTDRIVER@" = "dgc" ]; then
+			return 0
+	fi
+	units="${specificunit}"
+	if [ -z "${units}" ]; then
+		units=`ls --ignore=flush_nvm ${procdrvdir}`
+
+		if [ -z "${units}" ]; then
+			echo ""
+			if [ "@CNXTDRIVER@" = "hsf" ]; then
+				echo 1>&2 "Warning: no device detected by @CNXTTARGET@ driver - HDA modems may require reboot"
+			else
+				echo 1>&2 "Warning: no device detected by @CNXTTARGET@ driver"
+			fi
+			show_module_settings
+			show_conflicting_modules
+			return 1
+		fi
+	fi
+
+	for unit in ${units}; do
+		read_unit_parms || return $?
+	done
+	rereadparms=false
+}
+
+show_unit_parms()
+{
+	echo ""
+	echo "Config for modem unit ${unit}: /dev/ttyS@CNXTSERDEV@${unit}"
+	echo "	Device instance: ${parm_hwinst[${unit}]}"
+	if [ -n "${parm_hwrevision[${unit}]}" ]; then
+		echo "	HW revision    : ${parm_hwrevision[${unit}]}"
+	fi
+	echo "	HW profile name: ${parm_hwprofile[${unit}]}"
+	if ${isfreeversion}; then
+		echo "	Registration ID: shown in full version only"
+	elif [ -n "${parm_hwid[${unit}]}" ]; then
+		echo "	Registration ID: ${parm_hwid[${unit}]}"
+		echo "	License owner  : ${parm_licowner[${unit}]}"
+		echo "	License key    : `keytodisp \"${parm_lickey[${unit}]}\"`"
+		echo "	License status : ${parm_licstatus[${unit}]}"
+	fi
+	if [ -n "${parm_regionT35c[${unit}]}" ]; then
+		echo "	Current region : ${parm_regionName[${unit}]} (T.35 code: ${parm_regionT35c[${unit}]})"
+	else
+		echo "	Current region : ${parm_regionName[${unit}]}"
+	fi
+}
+
+show_intro()
+{
+	echo "@CNXTDRVDSC@ driver, version ${cnxtversion}"
+
+	case "${cnxtversion}" in
+	*beta*)
+		(
+		echo ""
+		echo "WARNING: this is an EXPERIMENTAL BETA VERSION"
+		echo "USE AT YOUR OWN RISK! See the file ${cnxtlibdir}/LICENSE for details."
+		) 1>&2
+		;;
+	esac
+
+	case "${cnxtversion}" in
+	*free* | *full*)
+		(
+		echo ""
+		echo "If you need license keys, assistance or more information, please go to:"
+		echo "	http://www.linuxant.com/"
+		echo ""
+		echo "When reporting a problem for the first time, please send"
+		echo "us the file generated by \"@CNXTTARGET@config --dumpdiag\"."
+		) 1>&2
+		;;
+	*)
+		(
+		echo ""
+		echo "If you need assistance or more information, please go to:"
+		echo "	http://www.linuxant.com/"
+		echo ""
+		echo "When reporting a problem for the first time, please send"
+		echo "us the file generated by \"@CNXTTARGET@config --dumpdiag\"."
+		) 1>&2
+		;;
+	esac
+}
+
+show_conflicting_modules()
+{
+	if [ -s "${cnxtetcdir}/.modconflicts-${OSKERNVERS}" ]; then
+		(
+		echo ""
+		while read mod mine; do
+			echo "Note: kernel module $mod overridden by $mine"
+			if lsmod | grep -q "^`echo \"${mod}\" | sed 's/[-_]/[-_]/g'` "; then
+				echo "WARNING: module $mod still loaded; try \"rmmod ${mod}\" or reboot"
+			fi
+		done < "${cnxtetcdir}/.modconflicts-${OSKERNVERS}"
+		) 1>&2
+	fi
+}
+
+show_module_settings()
+{
+	if [ "@CNXTDRIVER@" = "dgc" ]; then
+		if [ ! -e "/lib/modules/${OSKERNVERS}/extra/@CNXTTARGET@usbdcp.${KO}" ]; then
+			echo ""
+			if is_generic_package; then
+				method="compiled"
+			else
+				method="installed"
+			fi
+			echo "ERROR: kernel module not ${method}; try running \"@CNXTTARGET@config\" to solve the problem."
+			return 0
+		fi
+		return 0
+	fi
+
+	if [ ! -e "/lib/modules/${OSKERNVERS}/extra/@CNXTTARGET@osspec.${KO}" ]; then
+		echo ""
+		if is_generic_package; then
+			method="compiled"
+		else
+			method="installed"
+		fi
+		echo "ERROR: kernel modules not ${method}; try running \"@CNXTTARGET@config\" to solve the problem."
+		return 0
+	fi
+
+	[ "@CNXTDRIVER@" = "hsf" ] || return 0
+
+	newline=true
+
+	if [ ! -e "/lib/modules/${OSKERNVERS}/extra/hsfusbcd2.${KO}" ]; then
+		if ${newline}; then
+			echo ""
+			newline=false
+		fi
+		echo "Note: USB support not compiled in the driver"
+	fi
+
+	if [ ! -e "/lib/modules/${OSKERNVERS}/extra/hsfhda.${KO}" ] || ( ( [ ! -e "/lib/modules/${OSKERNVERS}/updates/snd-hda-intel.${KO}" ] || [ ! -e "/lib/modules/${OSKERNVERS}/updates/snd-hda-codec.${KO}" ] ) && ! hda_patch_present ); then
+		if ${newline}; then
+			echo ""
+			newline=false
+		fi
+		echo "Note: HDA support not compiled in the driver"
+	fi
+}
+
+show_usage_and_exit()
+{
+	show_intro
+
+	case "${cnxtversion}" in
+	*free* | *full*)
+		licenseopt=" --license"
+		licenseoptdesc="
+  -l, --license[=<owner/key>]  Set license key
+"
+		;;
+	*)
+		licenseopt=""
+		licenseoptdesc=""
+		;;
+	esac
+
+	cat 1>&2 << EOT
+
+Usage: `basename $0` [options]
+
+  -u, --unit=<number>          Select modem unit (default 0)
+  -c, --region[=<name>]        Set region, to <name> if specified
+                               (Use name "AUTO" to infer from timezone)
+  -k, --kernel                 Build and install kernel modules
+  -s, --serial                 Install serial port devices
+  --rcscript                   Install rc script
+
+  -i, --info                   Show current configuration information
+${licenseoptdesc}
+  -p, --patch[=<file.patch>]   Install the patch <file.patch>. If no patch is
+                               specified, a list of available patch(es) will be
+                               downloaded.
+  -P, --hwprofile[=<name>]     Set HW profile name, to <name> if specified
+
+  -d, --dumpdiag[=<file>]      Probe driver modules and dump system diagnostic
+                               information to <file>
+                               (default: ${cnxtdiagfile})
+
+  -N, --noprobe                Do dumpdiag without probing modules (safer)
+
+  -a, --auto                   Run in automatic mode, without prompting user
+  -r, --remove                 Remove serial devices and kernel modules
+  --uninstall                  Remove the @CNXTTARGET@ driver from your system
+
+  --rcstart                    System startup (used internally)
+  --rcstop                     System shutdown (used internally)
+  --newinstance=<hwinst>       Initialize device instance (used internally)
+
+  -h, --help                   This small usage guide
+  -V, --version                Show version
+
+Default options if none selected: --kernel --serial --region --rcscript${licenseopt} --info
+EOT
+	exit 1
+}
+
+# end of functions; execution starts here
+
+PATH=@CNXTSBINDIR@:/usr/sbin:/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin
+export PATH
+
+# Ensure that we are root
+if [ "`id -u`" != "0" ]; then
+	echo "$0: this command must be executed as root"
+	exec su -l -c "$0 $*" root
+	exit $?
+fi
+
+unset LANG; unset LOCALE; unset LC_TIME; unset LC_ALL
+
+umask 022
+
+cnxtlibdir="@CNXTLIBDIR@"
+cnxtetcdir="@CNXTETCDIR@"
+cnxtnvmdir="@CNXTNVMDIR@"
+cnxtversion="@CNXTLINUXVERSION@"
+
+if [ "@CNXTDRIVER@" = "hsf" ]; then
+	KERN_CONFIG_WARNING="4KSTACKS"
+else
+	KERN_CONFIG_WARNING=
+fi
+
+KERN_CONFIG_REQUIRED="SERIAL_CORE"
+
+GCC_INSTALLED=
+
+if which gawk >/dev/null 2>&1; then
+	AWK=gawk
+else
+	AWK=awk
+fi
+
+identify_system >/dev/null
+
+case "${cnxtversion}" in
+*free*)
+	isfreeversion=true
+	;;
+*)
+	isfreeversion=false
+	;;
+esac
+
+cnxtdiagfile="/tmp/@CNXTDRIVER@diag.txt"
+
+module_settings
+
+TEMP=`getopt -a -o u::c::C::ksil::P::d::p::NarhV --long unit::,region::,country::,kernel,serial,rcscript,rcstart,rcstop,newinstance:,info,license::,hwprofile::,dumpdiag::,patch::,noprobe,auto,remove,help,version,uninstall -n "\`basename $0\`" -- "$@"`
+if [ $? != 0 ]; then
+	show_usage_and_exit
+fi
+
+eval set -- "$TEMP"
+
+automode=false
+noprobe=false
+do_show_intro=true
+do_cfgkernel=false
+do_cfgserial=false
+do_cfgrcscript=false
+do_cfgrcstart=false
+do_cfgrcstop=false
+do_cfgnewinstance=false
+do_cfglicense=false
+do_cfghwprofile=false
+do_infocfg=false
+do_dumpdiag=false
+do_patch=false
+do_cfgremove=false
+do_cfgregion=false
+do_cfguninstall=false
+newinstance=""
+setregion=""
+setlicense=""
+setlicowner=""
+sethwprofile=""
+setdiagfile=""
+setpatch=""
+specificunit=""
+lastowner="unknown"
+
+explicitopt=false
+
+while true ; do
+	case "$1" in
+		-a|--auto) automode=true; shift ;;
+		-c|--region|-C|--country)
+			explicitopt=true
+			do_cfgregion=true
+			if [ -n "$2" ]; then
+				setregion="`echo \"$2\" | tr '[a-z ]' '[A-Z_]'`"
+			fi
+			shift 2
+			;;
+		-u|--unit)
+			explicitopt=true
+			specificunit="$2"
+			shift 2
+			;;
+		-k|--kernel) explicitopt=true; do_cfgkernel=true; shift ;;
+		-s|--serial) explicitopt=true; do_cfgserial=true; shift ;;
+		--rcscript) explicitopt=true; do_cfgrcscript=true; shift ;;
+		--rcstart) explicitopt=true; do_cfgrcstart=true; do_show_intro=false; automode=true; shift ;;
+		--rcstop) explicitopt=true; do_cfgrcstop=true; do_show_intro=false; automode=true; shift ;;
+		--newinstance)
+			explicitopt=true
+			do_show_intro=false
+			do_cfgnewinstance=true
+			if [ -n "$2" ]; then
+				newinstance="$2"
+			fi
+			shift 2
+			;;
+		-l|--license)
+			explicitopt=true
+			do_cfglicense=true
+			if [ -n "$2" ]; then
+				setlicense="$2"
+			fi
+			shift 2
+			;;
+		-P|--hwprofile)
+			explicitopt=true
+			do_cfghwprofile=true
+			if [ -n "$2" ]; then
+				sethwprofile="$2"
+			fi
+			shift 2
+			;;
+		-i|--info)   explicitopt=true; do_infocfg=true; shift ;;
+		-d|--dumpdiag)
+			explicitopt=true
+			do_dumpdiag=true
+			setdiagfile="$2"
+			shift 2
+			;;
+		-p|--patch)
+			explicitopt=true
+			do_patch=true
+			setpatch="$2"
+			shift 2
+			;;
+		-N|--noprobe)
+			explicitopt=true
+			do_dumpdiag=true
+			noprobe=true
+			shift
+			;;
+		--uninstall)
+			explicitopt=true; do_cfguninstall=true; shift ;;
+		-r|--remove) explicitopt=true; do_cfgremove=true; do_show_intro=false; shift ;;
+		-h|--help) show_usage_and_exit; shift ;;
+		-V|--version) echo "${cnxtversion}"; exit 0;;
+		--) shift ; break ;;
+		*) echo "Internal error!" ; exit 1 ;;
+	esac
+done
+
+# Accept --region <name> as equivalent to --region=<name>
+if ${do_cfgregion} && [ $# -ge 1 -a -z "${setregion}" ]; then
+	setregion="`echo \"$1\" | tr '[a-z ]' '[A-Z_]'`"
+	shift
+fi
+
+# Accept --license <name> as equivalent to --license=<name>
+if ${do_cfglicense} && [ $# -ge 1 -a -z "${setlicense}" ]; then
+	setlicense="$1"
+	shift
+fi
+
+# Accept --hwprofile <name> as equivalent to --hwprofile=<name>
+if ${do_cfghwprofile} && [ $# -ge 1 -a -z "${sethwprofile}" ]; then
+	sethwprofile="$1"
+	shift
+fi
+
+# Accept --dumpdiag <file> as equivalent to --dumpdiag=<file>
+if ${do_dumpdiag} && [ $# -ge 1 -a -z "${setdiagfile}" ]; then
+	setdiagfile="$1"
+	shift
+fi
+
+# Accept --patch <file> as equivalent to --patch=<file>
+if ${do_patch} && [ $# -ge 1 -a -z "${setpatch}" ]; then
+	setpatch="$1"
+	shift
+fi
+
+procdrvdir="/proc/driver/@CNXTTARGET@"
+
+if [ $# -ne 0 ]; then
+	echo 1>&2 "$0: extraneous arguments: $*"
+	show_usage_and_exit
+fi
+
+# If nothing explicitely specified, configure everything
+if ! ${explicitopt}; then
+	do_cfgkernel=true
+	do_cfgserial=true
+	if [ "@CNXTDRIVER@" != "dgc" ]; then
+	do_cfgregion=true
+	fi
+	do_cfgrcscript=true
+	if ! ${isfreeversion}; then
+		do_cfglicense=true
+	fi
+	do_infocfg=true
+fi
+
+if ${do_show_intro}; then
+	show_intro
+fi
+
+if ${do_patch}; then
+	# Obtain the full path to the patch file to let the patcher find it
+	if [ -n "${setpatch}" ]; then
+		case "${setpatch}" in
+		/*)
+			;;
+		*)
+			setpatch="`pwd`/${setpatch}"
+			;;
+		esac
+	fi
+
+	install_patch "${setpatch}" || exit $?
+fi
+
+if ${do_cfgremove}; then
+	unconfigure_rcscript || exit $?
+	remove_kernel_modules || exit $?
+	@CNXTTARGET@stop
+	unconfigure_serial || exit $?
+	rm -rf "${cnxtnvmdir}/dynamic"
+	rm -f ${cnxtetcdir}/.modconflicts-*
+fi
+
+if ${do_cfgnewinstance}; then
+	if [ ! -d "${cnxtnvmdir}/dynamic/${newinstance}" ]; then
+		mkdir --mode=700 --parents "${cnxtnvmdir}/dynamic/${newinstance}" || exit $?
+		# The purpose of --info here is to ensure module reload:
+		(sleep 2; exec @CNXTTARGET@config --auto --region=AUTO --info) </dev/null >/dev/null 2>&1 &
+	fi
+fi
+
+if ${do_cfgrcscript}; then
+	configure_rcscript || exit $?
+fi
+
+if ${do_cfgkernel}; then
+	configure_kernel || exit 124
+fi
+
+if ${do_cfgserial}; then
+	configure_serial || exit $?
+fi
+
+rereadparms=true
+if ${do_cfgregion} || ${do_cfglicense} || ${do_cfghwprofile}; then
+	read_parms || exit 123
+fi
+
+if ${do_cfgregion}; then
+	if [ "@CNXTDRIVER@" = "dgc" ]; then
+		echo ""
+		echo "ERROR: not supported."
+		exit 1
+	fi
+	for unit in ${units}; do
+		configure_region || exit $?
+	done
+	echo ""
+	echo "To change, use \"@CNXTTARGET@config --region\" or \"AT+GCI=<T35code>\""
+	echo "The current region can be displayed by entering \"ATI9\" in a terminal program."
+fi
+
+if ${do_cfglicense} && [ -n "${parm_hwid[${unit}]}" ]; then
+	for unit in ${units}; do
+		configure_license
+		res=$?
+		if [ ${res} -ne 0 ] && ${explicitopt}; then
+			exit ${res}
+		fi
+	done
+	do_infocfg=true
+fi
+
+if ${do_cfghwprofile}; then
+	if [ "@CNXTDRIVER@" = "dgc" ]; then
+		echo ""
+		echo "ERROR: not supported."
+		exit 1
+	fi
+	for unit in ${units}; do
+		configure_hwprofile || exit $?
+	done
+	do_infocfg=true
+fi
+
+if ${do_cfgrcstart}; then
+	if ! modules_exist; then
+		configure_kernel || exit $?
+	fi
+
+	if [ ! -e "${cnxtetcdir}/.serial_configured" ]; then
+		configure_serial || exit $?
+	fi
+
+	ensure_driver_present
+elif ${do_cfgrcstop}; then
+	@CNXTTARGET@stop
+fi
+
+if ${do_infocfg}; then
+	show_module_settings
+	show_conflicting_modules
+	if ${rereadparms}; then
+		read_parms || exit $?
+	else
+		ensure_driver_present 2>/dev/null # for udev
+	fi
+	if [ "@CNXTDRIVER@" != "dgc" ]; then
+	echo ""
+	echo "Current parameters: (\"@CNXTTARGET@config --info\")"
+	for unit in ${units}; do
+		show_unit_parms
+	done
+	fi
+	if [ -h /dev/modem ]; then
+		echo ""
+		echo "The /dev/modem alias (symlink) points to `/bin/ls -l /dev/modem 2>/dev/null | ${AWK} '{print $11}'`"
+	fi
+	if ${sawfreelicenses}; then
+		if ${isfreeversion}; then
+			needfullversion
+		else
+			echo ""
+			echo "To enable full 56K modem and FAX functionality, enter your license information"
+			echo "with \"@CNXTTARGET@config --license\"."
+			echo ""
+			echo "License owner and key data must EXACTLY match the information respectively"
+			echo "provided to and by Linuxant. Otherwise, license status will remain \"FREE\"!"
+		fi
+	fi
+fi
+
+if ${do_dumpdiag}; then
+	if [ -n "${setdiagfile}" ]; then
+		cnxtdiagfile="${setdiagfile}"
+	fi
+	dump_diagnostics || exit $?
+fi
+
+if ${do_cfguninstall}; then
+	(
+	case "$PACKTYPE" in
+		TAR)
+			cd "${PACKSRCDIR}" && make uninstall
+			;;
+		RPM)
+			rpm -e @CNXTTARGET@modem
+			;;
+		DEB)
+			dpkg -r @CNXTTARGET@modem
+			;;
+		*)
+			echo "ERROR: don't know how to uninstall a package of type ${PACKTYPE}."
+			exit 1
+			;;
+	esac
+	) > /var/run/cnxtconf.uninst.$$ 2>&1
+
+	retval=$?
+
+	echo ""
+	if [ ${retval} -ne 0 ]; then
+		echo "ERROR: Uninstallation failed :"
+		echo ""
+		cat /var/run/cnxtconf.uninst.$$
+	else
+		echo "Uninstallation was successful."
+	fi
+	rm -f /var/run/cnxtconf.uninst.$$
+	exit ${retval}
+fi

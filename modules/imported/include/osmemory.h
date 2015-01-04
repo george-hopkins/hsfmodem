@@ -1,0 +1,124 @@
+/*
+ * Copyright (c) 2003-2004 Linuxant inc.
+ * Copyright (c) 2001-2004 Conexant Systems, Inc.
+ * 
+ * 1.   Permitted use. Redistribution and use in source and binary forms,
+ * without modification, are only permitted under the terms set forth herein.
+ * 
+ * 2.   Disclaimer of Warranties. LINUXANT, ITS SUPPLIERS, AND OTHER CONTRIBUTORS
+ * MAKE NO REPRESENTATION ABOUT THE SUITABILITY OF THIS SOFTWARE FOR ANY PURPOSE.
+ * IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTIES OF ANY KIND.
+ * LINUXANT AND OTHER CONTRIBUTORS DISCLAIMS ALL WARRANTIES WITH REGARD
+ * TO THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE, GOOD TITLE AND AGAINST INFRINGEMENT.
+ * 
+ * This software has not been formally tested, and there is no guarantee that
+ * it is free of errors including, but not limited to, bugs, defects,
+ * interrupted operation, or unexpected results. Any use of this software is
+ * at user's own risk.
+ * 
+ * 3.   No Liability.
+ * 
+ * (a) Linuxant, its suppliers, or contributors shall not be responsible for
+ * any loss or damage to users, customers, or any third parties for any reason
+ * whatsoever, and LINUXANT, ITS SUPPLIERS OR CONTRIBUTORS SHALL NOT BE LIABLE
+ * FOR ANY ACTUAL, DIRECT, INDIRECT, SPECIAL, PUNITIVE, INCIDENTAL, OR
+ * CONSEQUENTIAL (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED, WHETHER IN CONTRACT, STRICT OR OTHER LEGAL THEORY OF
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
+ * WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
+ * 
+ * (b) User agrees to hold Linuxant, its suppliers, and contributors harmless
+ * from any liability, loss, cost, damage or expense, including attorney's fees,
+ * as a result of any claims which may be made by any person, including
+ * but not limited to User, its agents and employees, its customers, or
+ * any third parties that arise out of or result from the manufacture,
+ * delivery, actual or alleged ownership, performance, use, operation
+ * or possession of the software furnished hereunder, whether such claims
+ * are based on negligence, breach of contract, absolute liability or any
+ * other legal theory.
+ * 
+ * 4.   Notices. User hereby agrees not to remove, alter or destroy any
+ * copyright, trademark, credits, other proprietary notices or confidential
+ * legends placed upon, contained within or associated with the Software,
+ * and shall include all such unaltered copyright, trademark, credits,
+ * other proprietary notices or confidential legends on or in every copy of
+ * the Software.
+ * 
+ * 5.   Reverse-engineering. User hereby agrees not to reverse engineer,
+ * decompile, or disassemble the portions of this software provided solely
+ * in object form, nor attempt in any manner to obtain their source-code.
+ * 
+ * 6.   Redistribution. Permission to redistribute this software without
+ * modification is granted, without prejudice to Linuxant's ability to obtain
+ * reparation for any unauthorized distribution of previous versions of this
+ * software released under prior LICENSE terms. Modification or redistribution
+ * of this software under different terms requires explicit written approval
+ * signed by an authorized Linuxant officer.
+ * 
+ * 7.   Performance. V.92 modems are designed to be capable of receiving data at
+ * up to 56Kbps with compatible phone line and server equipment, and transmitting
+ * data at up to 31.2Kbps. V.90 modems are designed to be capable of receiving
+ * data at up to 56 Kbps from a compatible service provider and transmitting data
+ * at up to about 28.8 Kbps. Public networks currently limit download speeds to
+ * about 53Kbps. Actual speeds vary and are often less than the maximum possible.
+ * 
+ * 
+ */
+
+/****************************************************************************************
+ *                     Version Control Information										*
+ *                                                                                      *
+ * $Header:   R:/pvcs68/vm/common/Cyprus Project/archives/managers/include/osmemory.h-arc   1.1   Jan 27 2003 19:59:16   Shai  $
+ * 
+*****************************************************************************************/
+
+
+/****************************************************************************************
+
+File Name:			osmemory.h	
+
+File Description:	Prototypes for OS-specific API for the Memory Manager.
+
+*****************************************************************************************/
+
+
+#ifndef __OSMEMORY_H__
+#define __OSMEMORY_H__
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+/****************************************************************************************
+The OsHeapAllocate function allocates a block of non-pageable system memory for the
+Memory Manager to operate. The memory manager will call this function only once, 
+therefore returning a pointer to a statically allocated memory block is acceptable
+if the underlying OS doesn't have memory allocation API.
+The allocated memory must be 4-byte aligned, although page alignment is preferable
+on a system with virtual memory.
+    
+Params:	size of memory block to allocate
+Result:	pointer to allocated block, 0 if memory can't be allocated
+****************************************************************************************/
+__shimcall__
+void*	OsAllocate	(unsigned size);
+
+
+/****************************************************************************************
+The OsHeapFree function frees previously allocated block of memory
+    
+Params:	pointer to a block to free
+Result:	none
+****************************************************************************************/
+__shimcall__
+void	OsFree		(void* ptr);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

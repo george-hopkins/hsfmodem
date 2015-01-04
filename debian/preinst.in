@@ -1,0 +1,14 @@
+#!/bin/sh
+
+if [ "$1" = "install" ]; then
+	if [ -e "@CNXTETCDIR@" ]; then
+        	echo "Removing old @CNXTETCDIR@"
+        	rm -rf "@CNXTETCDIR@"
+	fi
+	if [ -e "@CNXTLIBDIR@" ]; then
+        	echo "Removing old @CNXTLIBDIR@"
+        	rm -rf "@CNXTLIBDIR@"
+	fi
+fi
+
+exit 0

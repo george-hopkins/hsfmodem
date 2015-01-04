@@ -1,0 +1,264 @@
+#!/usr/bin/perl
+#
+# Copyright (c) 2003-2004 Linuxant inc.
+#
+# NOTE: The use and distribution of this software is governed by the terms in
+# the file LICENSE, which is included in the package. You must read this and
+# agree to these terms before using or distributing this software.
+#
+# This script is called as a usermodehelper to start and stop the
+# DCP (Digital Call Progress) audio monitoring playback process for
+# the @CNXTDRVDSC@ driver under Linux.
+#
+# It tries to be as system and distribution-neutral as possible.
+
+$CNXTDCPDEVICE=$ENV{'CNXTDCPDEVICE'};
+if ($CNXTDCPDEVICE eq "") {
+	$CNXTDCPDEVICE=0;
+}
+
+$CNXTDCPACTION=$ENV{'CNXTDCPACTION'};
+if ($CNXTDCPACTION) {
+	open STDOUT, ">/var/run/@CNXTTARGET@dcpd$CNXTDCPDEVICE.out" or open STDOUT, ">/dev/null";
+	open STDERR, ">/var/run/@CNXTTARGET@dcpd$CNXTDCPDEVICE.err" or open STDERR, ">/dev/console";
+	open STDIN, "</dev/null";
+}
+
+if ($CNXTDCPACTION eq "start") {
+	if($pid=fork) {
+		# parent
+		exit 0;
+	} elsif (defined $pid) {
+		# child continues
+		$inchild=1;
+	} else {
+		die "$0: fork failed: $!\n";
+	}
+
+} elsif ($CNXTDCPACTION eq "stop") {
+	system ("killall @CNXTTARGET@dcpd");
+	exit 0;
+} elsif ($CNXTDCPACTION eq "") {
+} else {
+	die "$0: invalid CNXTDCPACTION\n";
+}
+
+END {
+#	if ($inchild) {
+#		unlink $pidfile;
+#	}
+}
+
+$SIG{TERM} = sub { exit; }; # execute END block
+$SIG{INT} = sub { exit; }; # execute END block
+$SIG{PIPE} = sub { };
+$SIG{CHLD} = 'IGNORE'; # workaround for Turbolinux 2.4.18 kernel
+
+use Errno;
+use Fcntl;
+
+$dcpdev="/dev/@CNXTTARGET@dcp$CNXTDCPDEVICE";
+
+sleep(1); # give udev time to create DCP device
+
+sysopen DCPDEV, "$dcpdev", (O_RDONLY | O_NDELAY | O_NONBLOCK) or die "$0: can't open $dcpdev";
+
+$CNXTDCPRATE=$ENV{'CNXTDCPRATE'};
+if ($CNXTDCPRATE eq "") {
+	$CNXTDCPRATE=16000;
+}
+
+$blocksize=2048;
+
+
+$rin = $win = $ein = "";
+vec($rin, fileno(DCPDEV), 1) = 1;
+$ein = $rin | $win;
+
+# start with two-block buffer to prevent underruns
+$buffersize=2*$blocksize;
+
+$buf = pack("a$buffersize", "");
+
+$timeout=undef;
+
+$len=0;
+$buflen=$buffersize;
+
+$convertsamplestostereo = undef;
+
+$unamer = `uname -r`;
+$unamer =~ /^([0-9]+)\.([0-9]+)\./;
+$kernmajver = $1;
+$kernminver = $2;
+
+if ($kernmajver >= 2 && $kernminver >= 6) {
+	# Attempt to use ALSA before OSS on kernels >= 2.6
+	@drivers = ( open_alsa, open_oss, open_sox );
+} else {
+	@drivers = ( open_oss, open_alsa, open_sox );
+}
+
+while(1) {
+
+	($nfound, $timeleft) = select($rout=$rin, $wout=$win, $eout=$ein, $timeout);
+
+	if ($nfound > 0) {
+		if($rout eq $rin) {
+			$r = sysread DCPDEV, $buf, $buflen - $len, $len;
+			if ($r <= 0) {
+				die "$0: read from $dcpdev: $!\n";
+			} else {
+				$len += $r;
+			}
+			if ($len == $buflen) {
+				if((!defined(fileno(DSPDEV))) && (!defined(fileno(RECORD)))) {
+
+					if (! -e "@CNXTETCDIR@/nodcpaudio") {
+						foreach $driver (@drivers) {
+							if (&$driver()) {
+								last;
+							}
+						}
+						
+						if (!defined(fileno(DSPDEV))) {
+							print STDERR "$0: Digital call progress playback disabled\n";
+						}
+					}
+
+					if((!defined(fileno(RECORD))) && (-d "@CNXTETCDIR@/dcprecord")) {
+						$cnt=0;
+						while(1) {
+							$recfn= sprintf "@CNXTETCDIR@/dcprecord/%03d", $cnt;
+							if(sysopen (RECORD, $recfn, O_WRONLY | O_CREAT | O_EXCL, 0600)) {
+								last;
+							}
+							if ($!{EEXIST}) {
+								$cnt++;
+								next;
+							}
+							print STDERR "$0: sysopen $recfn: $!\n";
+							last;
+						}
+					}
+
+					$timeout=0.5;
+				}
+
+				if(defined(fileno(RECORD))) {
+					$w = syswrite RECORD, $buf, $len;
+					if ($w != $len) {
+						print STDERR "$0: syswrite record $len returned $w ($!)\n";
+					}
+				}
+
+				if(defined(fileno(DSPDEV))) {
+					if ($convertsamplestostereo) {
+						@samples=unpack("S*", $buf);
+						for ($c = 0; $c < @samples; $c++) {
+					    	$samples[$c] = $samples[$c] | ($samples[$c] << 16);
+						}
+						$buf = pack("L*", @samples);
+						$len *= 2;
+					}
+					$w = syswrite DSPDEV, $buf, $len;
+					if ($w != $len) {
+						print STDERR "$0: syswrite $len returned $w ($!)\n";
+						if ($!{EPIPE}) {
+							close DSPDEV;
+						}
+					}
+				}
+
+				if((!defined(fileno(DSPDEV))) && (!defined(fileno(RECORD)))) {
+					sleep 5; # delay retry
+					$len=0;
+					$buflen=$buffersize;
+					while(sysread(DCPDEV, $buf, $buflen) > 0) {};
+					next;
+				}
+
+				$len = 0;
+				$buflen = $blocksize;
+			}
+		}
+		if($eout eq $ein) {
+			print STDERR "$0: eout\n";
+		}
+	} else {
+		# timeout
+		if(defined(fileno(DSPDEV))) {
+			close DSPDEV;
+		}
+		if(defined(fileno(RECORD))) {
+			close RECORD;
+		}
+		$timeout=undef;
+		$len=0;
+		$buflen=$buffersize;
+	}
+}
+
+
+sub open_oss()
+{
+	my $AFMT_S16_LE=0x10;
+	my $AFMT_S16_BE=0x20;
+	my $SNDCTL_DSP_RESET=0x5000;
+	my $SNDCTL_DSP_STEREO=0xc0045003;
+	my $SNDCTL_DSP_CHANNELS=0xc0045006;
+	my $SNDCTL_DSP_SETFMT=0xc0045005;
+	my $SNDCTL_DSP_SPEED=0xc0045002;
+	my $SNDCTL_DSP_SETFRAGMENT=0xc004500a;
+
+	my $snddev = "/dev/dsp";
+
+	my $sndfrag = (0x7fff << 16) | (log($blocksize)/log(2));
+	my $sndstereo = 0;
+	my $sndchan = 1;
+	my $sndfmt = $AFMT_S16_LE;
+	my $sndspeed = $CNXTDCPRATE;
+
+	my $sndfragarg = pack("L", $sndfrag);
+	my $sndstereoarg = pack("L", $sndstereo);
+	my $sndchanarg = pack("L", $sndchan);
+	my $sndfmtarg = pack("L", $sndfmt);
+	my $sndspeedarg = pack("L", $sndspeed);
+
+	if (!((sysopen DSPDEV, "$snddev", (O_WRONLY | O_NDELAY | O_NONBLOCK)) &&
+		ioctl(DSPDEV, $SNDCTL_DSP_RESET, 0) &&
+		ioctl(DSPDEV, $SNDCTL_DSP_SETFRAGMENT, $sndfragarg) &&
+		ioctl(DSPDEV, $SNDCTL_DSP_STEREO, $sndstereoarg) &&
+		ioctl(DSPDEV, $SNDCTL_DSP_CHANNELS, $sndchanarg) &&
+		ioctl(DSPDEV, $SNDCTL_DSP_SETFMT, $sndfmtarg) &&
+		ioctl(DSPDEV, $SNDCTL_DSP_SPEED, $sndspeedarg)
+		)) {
+			print STDERR "$0: can't use $snddev (OSS): $!\n";
+			return 0;
+	}
+
+	$convertsamplestostereo = unpack("L", $sndstereoarg);
+
+	return 1;
+}
+
+sub open_alsa()
+{
+	if (!(open DSPDEV, "|aplay -q --file-type raw --format=S16_LE --rate=$CNXTDCPRATE 2>&1 | grep -v '^underrun'")) {
+		print STDERR "$0: can't use aplay (ALSA): $!\n";
+		return 0;
+	}
+
+	return 1;
+}
+
+sub open_sox()
+{
+	if (!(open DSPDEV, "|sox -t raw -r $CNXTDCPRATE -sw -c 1 - -t ossdsp $snddev")) {
+		print STDERR "$0: can't open sox pipe: $!\n";
+		return 0;
+	}
+
+	return 1;
+}
+

@@ -1,0 +1,77 @@
+#!/usr/bin/make -f
+
+package=@CNXTTARGET@modem
+
+-include debian/target.mak
+
+build:
+	$(checkdir)
+	
+	$(MAKE) all
+	touch build
+
+clean:
+	$(checkdir)
+	-rm -f build
+	-$(MAKE) clean
+	-rm -f `find . -name "*~"`
+	-rm -rf debian/tmp debian/files* core debian/substvars
+
+binary-indep: checkroot build
+	$(checkdir)
+
+binary-arch: checkroot build
+	$(checkdir)
+	-rm -rf debian/tmp
+	install -d debian/tmp
+ifneq ($(TARGET_KERNEL),)
+	@MODS_DIR=binaries/linux-$(TARGET_KERNEL) ; \
+	case "$(TARGET_KERNEL)" in \
+	*[Ss][Mm][Pp]*) SMPSUFFIX="" ;; \
+	*) SMPSUFFIX="-SMP" ;; \
+	esac ; \
+	if [ -e "$(DISTROKERNHDRSDIR)/$(TARGET_DISTRO)/linux-$(TARGET_KERNEL)/.config" ] && grep -q '^CONFIG_SMP=y$$' "$(DISTROKERNHDRSDIR)/$(TARGET_DISTRO)/linux-$(TARGET_KERNEL)/.config"; then \
+		MODS_DIR="$${MODS_DIR}$${SMPSUFFIX}" ; \
+	fi; \
+	( \
+		if cd modules; then \
+			make --quiet --no-print-directory CNXT_KERNELSRC=$(DISTROKERNHDRSDIR)/$(TARGET_DISTRO)/linux-$(TARGET_KERNEL) CNXT_MODS_DIR=$${MODS_DIR} clean all modules_install || exit $$?; \
+		fi \
+	) || exit $$?
+endif
+	$(MAKE) all
+	$(MAKE) ROOT=`pwd`/debian/tmp install
+ifneq ($(TARGET_KERNEL),)
+	@PWD="`pwd`"; \
+	rm -fr "$${PWD}/debian/tmp/@CNXTLIBDIR@/modules/include" "$${PWD}/debian/tmp/@CNXTLIBDIR@/modules/imported"; \
+	find "$${PWD}/debian/tmp/@CNXTLIBDIR@/modules" -maxdepth 2 ! -name "COPYING" -type f -exec rm -f {} \;
+endif
+	rm -rf debian/@CNXTTARGET@modem-doc
+ifneq ($(CNXTDRIVER),dgc)
+	echo "./usr/share/doc/@CNXTTARGET@modem/100498D_RM_HxF_Released.pdf" > debian/@CNXTTARGET@modem-doc.files
+endif
+	# remove duplicate LICENSE
+	rm -f debian/tmp/usr/lib/@CNXTTARGET@modem/LICENSE
+# Must have debmake installed for this to work. Otherwise please copy
+# /usr/bin/debstd into the debian directory and change debstd to debian/debstd
+ifeq ($(CNXTDRIVER),dgc)
+	debstd BUGS CHANGES INSTALL LICENSE README
+else
+	debstd BUGS CHANGES CREDITS FAQ INSTALL LICENSE README 100498D_RM_HxF_Released.pdf
+endif
+	dpkg-gencontrol -p@CNXTTARGET@modem -isp
+	chown -R root.root debian/tmp
+#	chmod -R go=rX debian/tmp
+	dpkg --build debian/tmp ..
+
+define checkdir
+	test -f debian/rules
+endef
+
+binary: binary-indep binary-arch
+
+checkroot:
+	$(checkdir)
+	test root = "`whoami`"
+
+.PHONY: binary binary-arch binary-indep clean checkroot

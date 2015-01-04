@@ -1,0 +1,362 @@
+Questions:
+
+1) I have an HCF modem. Can I use these drivers?
+2) My modem's PCI ID is 127a:1025 or 127a:2005 and it doesn't work.
+3) My dialer or Internet connection wizard does not find the modem, even though 
+no errors were reported during installation and /dev/ttySHSF0 exists.
+4) I installed the driver, and now the /dev/ttySHSF0 or /dev/modem device is 
+supposed to be there but it doesn't exist.
+5) The modem returns "NO DIALTONE" when I try to dial.
+6) The modem works, but I can't hear anything when dialing.
+7) What is a good initialization string to use with my modem?
+8) The modem returns CONNECT messages with bogus connection speeds, like 
+"CONNECT 9600" or "CONNECT 115200".
+9) Is the message about the kernel being tainted upon loading the modules 
+normal?
+10) Changing serial port parameters with "setserial" on ttySHSF0 or /dev/modem 
+doesn't work.
+11) I have an ACPI-based machine and the driver is crashing or not loading.
+12) My modem doesn't work, or dials irregularly and sometimes it doesn't 
+transmit all the tones from the phone number.
+13) The modem disconnects or the system crashes as soon as or shortly after I 
+start the graphical desktop (X, GNOME, KDE, etc..) or use the sound card.
+14) My modem suddenly disconnects. What can potentially cause this?
+15) rpm -i gives me this error: "Failed dependencies: pciutils is needed by ..."
+16) hsfconfig gives me this error: "lspci: command not found"
+17) How can I tell if my driver is working or not?
+18) What should I do if my driver is not working?
+19) Modules crash upon loading or refuse to load due to a wrong compiler 
+version.
+20) Where does hsfconfig look for the kernel sources?
+21) I'm having problems uninstalling the RPM package.
+22) What does "warning: ...rpm: V3 DSA signature: NOKEY, key ID 5dfbf7dc" mean?
+23) Is V.92 supported?
+24) Is FAX supported?
+25) Is VOICE supported?
+26) Do you support other operating systems (eg. BeOS, FreeBSD, OpenBSD, etc.)?
+27) Do you plan on releasing a Linux driver for Conexant ADSL chipsets?
+
+
+Answers:
+
+1) I have an HCF modem. Can I use these drivers?
+
+	No, these drivers are only for the Conexant HSF (softmodem)
+	family, not for the HCF (controllerless) chips.
+
+	HCF drivers are available from http://www.linuxant.com/drivers/hcf/
+
+
+2) My modem's PCI ID is 127a:1025 or 127a:2005 and it doesn't work.
+
+	You probably should try both the HCF and HSF drivers, until
+	one works. Some early modems are incorrectly identified (HCF as HSF
+	and vice-versa) in some versions of the PCI ID lists used by lspci and
+	the linux kernel. Also, a few modem vendors have tried to save costs
+	by omitting the EEPROM where device IDs are stored, causing the same
+	default ID built into the bus interface chip to be used for both HCF
+	and HSF devices.
+
+
+3) My dialer or Internet connection wizard does not find the modem, even though 
+no errors were reported during installation and /dev/ttySHSF0 exists.
+
+	You might want to try entering "/dev/modem" manually for the
+	modem device. Also, verify that "/dev/modem" is a symbolic link
+	pointing to ttySHSF0. If it is not the case, you can try
+	re-creating it with the command:
+
+	rm -f /dev/modem; ln -s ttySHSF0 /dev/modem
+
+
+4) I installed the driver, and now the /dev/ttySHSF0 or /dev/modem device is 
+supposed to be there but it doesn't exist.
+
+	On devfs-based systems (such as Mandrake), the missing device node
+	is often a sign that the driver modules didn't load or initialize
+	properly. Try "modprobe /dev/ttySHSF", then check the /var/log/messages
+	file or run "dmesg" to see any kernel error messages that could provide
+	a clue as to why loading of the driver failed.
+
+
+5) The modem returns "NO DIALTONE" when I try to dial.
+
+	Please verify your line cord and country settings
+	(with hsfconfig --country).
+	If they are correct and the "NO DIALTONE" problems persist, you
+	may try disabling dialtone detection with the "ATX3" command.
+
+	If this still doesn't work, there might be a more serious problem
+	with the machine, driver or its configuration. The cause might be ACPI
+	or APIC related (see FAQ items about these topics; try booting
+	with "acpi=off" and/or "noapic" kernel options) or incorrect
+	RELAYS or FLAGS definitions in the INF file for your modem.
+	You might want to try importing the original values for these
+	parameters from your modem's original Windows driver. If this
+	solves the problem or it persists, please tell us about it.
+
+
+6) The modem works, but I can't hear anything when dialing.
+
+	Please verify the Ln and Mn settings with the AT&V command. They
+	should be L1 and M1.
+	If not, change them with the command: ATL1M1
+
+	If you still cannot hear any call progress sounds, and use a
+	modem model that does not have its own speaker (such as on a notebook),
+	verify your audio mixer settings (using aumix or equivalent utility) to
+	ensure that the volume levels are high enough and that the "PCM"
+	and "PhoneIn" channels are not muted.
+
+	With the HSF driver it is also possible to play call progress sounds
+	through the sound card. This requires that the system's audio driver be
+	properly configured. If other audio applications work but you still 
+cannot
+	hear call progress sounds, examine the /usr/sbin/hsfdcpd script.
+
+
+7) What is a good initialization string to use with my modem?
+
+	The following initialization string, which resets the modem to factory
+	settings, should cover most situations:
+
+	AT &F
+
+
+8) The modem returns CONNECT messages with bogus connection speeds, like 
+"CONNECT 9600" or "CONNECT 115200".
+
+	Use "ATW1" to enable reporting of line speed, error correction
+	protocol and DTE speed. See the command set reference manual
+	(100498D_RM_HxF_Released.pdf) for details.
+
+
+9) Is the message about the kernel being tainted upon loading the modules 
+normal?
+
+	Yes, and it can be safely ignored.
+
+
+10) Changing serial port parameters with "setserial" on ttySHSF0 or /dev/modem 
+doesn't work.
+
+	Since this modem driver provides a virtual serial interface, which
+	is not directly connected to a physical UART like a normal serial
+	port, it is not possible and would not make sense to configure
+	it with "setserial". Therefore you shouldn't use this command
+	on the ports associated with this driver.
+
+
+11) I have an ACPI-based machine and the driver is crashing or not loading.
+
+	It might be necessary to recompile a generic kernel from
+	ftp.kernel.org with the latest ACPI (and perhaps also KACPID
+	kernel lost interrupt) patches from http://sf.net/projects/acpi/
+
+	Alternatively you could try the 2.6 development kernel, which has
+	better ACPI support. However we cannot guarantee that the drivers
+	will work with development kernels since they are constantly evolving.
+
+
+12) My modem doesn't work, or dials irregularly and sometimes it doesn't 
+transmit all the tones from the phone number.
+
+	This problem might be ACPI-related or caused by a timing issue related
+	to the APIC timer module in some Linux kernels (usually SMP kernels).
+	You can verify if your kernel is using APIC by looking for the line
+	"ENABLING IO-APIC IRQs" when you run the "dmesg" command.
+
+	If you experience this problem, try disabling ACPI and/or
+	the APIC by booting your kernel with the option "acpi=off" and/or
+	the option "noapic".
+
+
+13) The modem disconnects or the system crashes as soon as or shortly after I 
+start the graphical desktop (X, GNOME, KDE, etc..) or use the sound card.
+
+	Some users have reported conflicts between certain sound card drivers,
+	(especially AC97 devices) and our modem drivers. Most graphical
+	desktops access sound devices when starting up.
+
+	We are investigating these problems and are hoping to find solutions
+	soon. Meanwhile, we recommend disabling any conflicting modules while
+	you use the modem. If you experience a conflict, please report it.
+
+
+14) My modem suddenly disconnects. What can potentially cause this?
+
+	An idle timer, bad connection, noise on the line,
+	call waiting, driver bug, incorrect NVM parameters,
+	overloaded system can all be potential causes for
+	sudden disconnections.
+
+	If you use the modem for an IP connection, try running a "ping"
+	in the background to keep the connection active.
+
+	If the problem persists, please send us detailed
+	information, including the output of
+	"cat /proc/driver/h*/0/lastcallstatus"
+	captured just after the connection was lost.
+
+
+15) rpm -i gives me this error: "Failed dependencies: pciutils is needed by ..."
+
+	You need to install the pciutils package before installing the
+	driver. This package contains "lspci" which is used by hsfconfig
+	to detect your card. 
+
+	pciutils should be installed from your Linux distribution CD. If
+	your distribution supports RPM, then the install command should be
+	similar to this: rpm -i /path/to/rpms/pciutils-....rpm
+
+
+16) hsfconfig gives me this error: "lspci: command not found"
+
+	hsfconfig requires lspci to detect your card. lspci comes
+	with pciutils. We recommend that you install pciutils, but you can also
+	configure the device manually. hsfconfig will always fail if you
+	try to use the "-a" option without pciutils installed.
+
+	pciutils should be installed from your Linux distribution CD. If
+	your distribution supports RPM, then the install command should be
+	similar to this: rpm -i /path/to/rpms/pciutils-....rpm
+
+
+17) How can I tell if my driver is working or not?
+
+	The easiest way to test your modem driver installation is to use a
+	terminal software like minicom. You should set the port to /dev/modem
+	or /dev/ttySHSF0. Once you have established a connection with the modem,
+	you can try to reset it by using the "ATZ" command. The modem should
+	answer "OK" to this command. Please refer to the
+	AT Command Set Reference Manual for the complete list of available
+	commands. You will find a link for the manual on our web site,
+	at the bottom of the driver's description section.
+
+	If you can communicate with the modem, then you should try to dial
+	a known valid number (eg. your ISP's number) with the command ATDT
+	followed by the phone number.
+
+	This procedure allows you to verify the driver's basic functionality
+	without involving a complex software like a PPP dialer.
+
+
+18) What should I do if my driver is not working?
+
+	First, you should verify if the modules are loaded by the kernel with
+	the command "lsmod". You should see at least hsfengine and hsfserial.
+
+	If the modules do not appear, try to load them with "modprobe
+	/dev/ttySHSF". If you still don't see them with "lsmod", look at the
+	file /var/log/messages and the output from the command "dmesg" for
+	clues on why the modules failed to load.
+
+
+19) Modules crash upon loading or refuse to load due to a wrong compiler 
+version.
+
+	It is very important that the driver modules be compiled with
+	the same compiler version that was used to build your kernel.
+	If the wrong version is used (i.e. gcc2 instead of gcc3 or vice-versa)
+	the system may crash or refuse to load the modules.
+
+	You can use the command "cat /proc/version" and "gcc -v" to
+	check the version strings.
+
+
+20) Where does hsfconfig look for the kernel sources?
+
+	By default, hsfconfig looks for the symbolic link
+	/lib/modules/(kernelversion)/build
+	If this link exists and points to a valid directory, then
+	hsfconfig will use this directory as the kernel sources'
+	location.
+
+	If the link does not exist, hsfconfig will try to use
+	/usr/src/linux or /usr/local/src/linux. 
+
+	Please note that if your kernel sources are in /usr/local/src/linux,
+	but you also have a /usr/src/linux link pointing to an invalid or empty
+	directory, then hsfconfig will try to use /usr/src/linux
+	and it will fail.
+
+	It is VERY important that the kernel sources' version match the kernel
+	version that you are currently running. If it isn't the case, then
+	hsfconfig will report and error.
+
+
+21) I'm having problems uninstalling the RPM package.
+
+	Try the following command:
+
+	rpm -e --noscripts --force --allmatches hsfmodem
+
+	If the driver prevents your system from starting normally,
+	you could try booting in 'single user' or 'failsafe' mode first.
+
+
+22) What does "warning: ...rpm: V3 DSA signature: NOKEY, key ID 5dfbf7dc" mean?
+
+	Before installing a package, RPM tries to verify its integrity.
+	
+	The packages distributed by Linuxant are cryptographically
+	signed with our public PGP key, which is not known to RPM by
+	default. However, it can be found on many keyservers or downloaded from
+
+	http://www.linuxant.com/pubkey.asc
+
+	Once you have downloaded our public key, you can import it in your
+	RPM database. You can do this with the following command:
+
+	rpm --import /path/to/pubkey.asc
+
+	After the key has been imported, the NOKEY warning messages should
+	disappear.
+
+	Afterward, a package's signature can be verified with the command:
+
+	rpm --checksig /path/to/package.rpm
+
+
+23) Is V.92 supported?
+
+	The V.92 modulation is supported as well as V.44 compression.
+	However, the MOH (Modem On Hold) feature cannot be supported at
+	this time because it requires a special application to interface
+	with the user. This should be provided in a future release.
+
+
+24) Is FAX supported?
+
+	Both HCF and HSF drivers now have fax class 1 (+FCLASS=1) and 1.0 
+(+FCLASS=1.0)
+	support.
+
+
+25) Is VOICE supported?
+
+	The HCF driver has voice support (+FCLASS=8), but this functionality
+	has not been tested a lot and might not work properly.
+
+	We hope to improve it and also add voice support to the HSF driver
+	soon.
+
+
+26) Do you support other operating systems (eg. BeOS, FreeBSD, OpenBSD, etc.)?
+
+	At this time, we only distribute Linux drivers and there
+	are currently no plans to support other operating systems.
+
+	However, people interested in porting the drivers to other operating
+	systems should contact us.
+
+
+27) Do you plan on releasing a Linux driver for Conexant ADSL chipsets?
+
+	Linuxant has licensed core technology and hopes to provide
+	official Linux drivers for Conexant ADSL chipsets in the future.
+
+	In the meantime, you could take a look at the "other drivers"
+	section on the links page at http://www.linuxant.com/drivers/links.php.
+
+

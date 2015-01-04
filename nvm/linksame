@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# Copyright (c) 2003-2004 Linuxant inc.
+#
+# NOTE: The use and distribution of this software is governed by the terms in
+# the file LICENSE, which is included in the package. You must read this and
+# agree to these terms before using or distributing this software.
+# 
+
+if [ "$1" = "-n" ]; then
+	dryrun=true
+else
+	dryrun=false
+fi
+
+prevsum=""
+
+if $dryrun; then
+	echo "dry run.."
+	find . -type f ! -empty -exec md5sum {} \; | sort | while read sum file ; do
+		if [ "$sum" = "$prevsum" ] && cmp -s "$file" "$prevfile"; then
+			echo ln "$prevfile" "$file"
+		else
+			prevsum="$sum"
+			prevfile="$file"
+		fi
+	done
+	exit $?
+fi
+
+find . -type f ! -empty -exec md5sum {} \; | sort | while read sum file ; do
+	if [ "$sum" = "$prevsum" ] && cmp -s "$file" "$prevfile"; then
+		rm -f "$file"
+		echo ln "$prevfile" "$file"
+		if ! ln "$prevfile" "$file"; then
+			echo 2>&1 "$0: ln FAILED - recreate $file based on $prevfile"
+			exit 1
+		fi
+	else
+		prevsum="$sum"
+		prevfile="$file"
+	fi
+done
+

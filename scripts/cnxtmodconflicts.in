@@ -1,0 +1,184 @@
+#!/usr/bin/perl
+#
+# Copyright (c) 2003-2004 Linuxant inc.
+#
+# NOTE: The use and distribution of this software is governed by the terms in
+# the file LICENSE, which is included in the package. You must read this and
+# agree to these terms before using or distributing this software.
+# 
+
+if (@ARGV != 1) {
+	die "Usage: $0 <modules_dir>\n";
+}
+
+if ( "@CNXTDRIVER@" eq "dgc" ) {
+	exit 0;
+}
+
+$exitcode = 0;
+
+$modules_dir = $ARGV[0];
+
+sub isOwnModule
+{
+	my ($mod) = @_;
+
+	@own_modules = split /\s+/, "@CNXTMODS@";
+	foreach $m (@own_modules) {
+		$own_modules{$m}++;
+	}
+
+	if (exists $own_modules{$module}) {
+		return 1;
+	}
+
+	# also explicitly check HSF/HCF hw mods because of overlapping IDs
+	if (($mod =~ /^hsfmc97/) || ($mod =~ /^hsfpci/) || ($mod =~ /^hsfusb/)) {
+		return 1;
+	}
+
+	if (($mod =~ /^hcfpcihw/) || ($mod =~ /^hcfusbhw/)) {
+		return 1;
+	}
+
+	return 0;
+}
+
+if(open(PCIMAP, "<$modules_dir/modules.pcimap")) {
+	while(<PCIMAP>) {
+		next if /^#/;
+		next if /^\s*(#|$)/;
+		($module, $vendor, $device, $subvendor, $subdevice, $class, $class_mask, $driver_data) = split;
+	
+		next if ($vendor eq "0xffffffff" && $device eq "0xffffffff" && $subvendor eq "0xffffffff" && $subdevice eq "0xffffffff");
+
+		if (isOwnModule($module)) {
+			push(@ownTable, {
+				bus => "PCI",
+				module => $module,
+				vendor => hex($vendor),
+				device => hex($device),
+				subvendor => hex($subvendor),
+				subdevice => hex($subdevice),
+				class => hex($class),
+				class_mask => hex($class_mask),
+				driver_data => $driver_data,
+			});
+		} else {
+			push(@pciTable, {
+				module => $module,
+				vendor => hex($vendor),
+				device => hex($device),
+				subvendor => hex($subvendor),
+				subdevice => hex($subdevice),
+				class => hex($class),
+				class_mask => hex($class_mask),
+				driver_data => $driver_data,
+			});
+		}
+	}
+	close(PCIMAP);
+} else {
+	print STDERR "$0: warning: unable to open $modules_dir/modules.pcimap: $!\n";
+	$exitcode++;
+}
+
+if(open(USBMAP, "<$modules_dir/modules.usbmap")) {
+	while(<USBMAP>) {
+		next if /^#/;
+		next if /^\s*(#|$)/;
+
+		($module, $match_flags, $idVendor, $idProduct, $bcdDevice_lo, $bcdDevice_hi, $bDeviceClass, $bDeviceSubClass, $bDeviceProtocol, $bInterfaceClass, $bInterfaceSubClass, $bInterfaceProtocol, $driver_info) = split;
+		
+		if (isOwnModule($module)) {
+			push(@ownTable, {
+				bus => "USB",
+				module => $module,
+				match_flags => hex($match_flags),
+				idVendor => hex($idVendor),
+				idProduct => hex($idProduct),
+				bcdDevice_lo => $bcdDevice_lo,
+				bcdDevice_hi => $bcdDevice_hi,
+				bDeviceClass => $bDeviceClass,
+				bDeviceSubClass => $bDeviceSubClass,
+				bDeviceProtocol => $bDeviceProtocol,
+				bInterfaceClass => $bInterfaceClass,
+				bInterfaceSubClass => $bInterfaceSubClass,
+				bInterfaceProtocol => $bInterfaceProtocol,
+				driver_info => $driver_info,
+			});
+		} else {
+			push(@usbTable, {
+				module => $module,
+				match_flags => hex($match_flags),
+				idVendor => hex($idVendor),
+				idProduct => hex($idProduct),
+				bcdDevice_lo => $bcdDevice_lo,
+				bcdDevice_hi => $bcdDevice_hi,
+				bDeviceClass => $bDeviceClass,
+				bDeviceSubClass => $bDeviceSubClass,
+				bDeviceProtocol => $bDeviceProtocol,
+				bInterfaceClass => $bInterfaceClass,
+				bInterfaceSubClass => $bInterfaceSubClass,
+				bInterfaceProtocol => $bInterfaceProtocol,
+				driver_info => $driver_info,
+			});
+		}
+	}
+	close(USBMAP);
+} else {
+	print STDERR "$0: warning: unable to open $modules_dir/modules.pcimap: $!\n";
+	$exitcode++;
+}
+
+for ($o = 0; $o <= $#ownTable; $o++) {
+
+	if ($ownTable[$o]{bus} eq "PCI") {
+		sub PCI_ANY_ID() {0xffffffff}
+		sub PCI_CLASS_COMMUNICATION_SERIAL() {0x0700}
+		sub PCI_CLASS_COMMUNICATION_MODEM() {0x0703}
+		sub PCI_CLASS_COMMUNICATION_OTHER() {0x0780}
+
+		for ($i = 0; $i <= $#pciTable; $i++) {
+			if (
+				(($pciTable[$i]{vendor} == PCI_ANY_ID) || ($pciTable[$i]{vendor} == $ownTable[$o]{vendor})) &&
+				(($pciTable[$i]{device} == PCI_ANY_ID) || ($pciTable[$i]{device} == $ownTable[$o]{device})) &&
+				(($ownTable[$o]{subvendor} == PCI_ANY_ID) || (
+				(($pciTable[$i]{subvendor} == PCI_ANY_ID) || ($pciTable[$i]{subvendor} == $ownTable[$o]{subvendor})) &&
+				(($pciTable[$i]{subdevice} == PCI_ANY_ID) || ($pciTable[$i]{subdevice} == $ownTable[$o]{subdevice}))
+				)) &&
+				((!(($pciTable[$i]{class} ^ (PCI_CLASS_COMMUNICATION_SERIAL << 8)) & $pciTable[$i]{class_mask})) ||
+				(!(($pciTable[$i]{class} ^ (PCI_CLASS_COMMUNICATION_MODEM << 8)) & $pciTable[$i]{class_mask})) ||
+				(!(($pciTable[$i]{class} ^ (PCI_CLASS_COMMUNICATION_OTHER << 8)) & $pciTable[$i]{class_mask})))
+			) {
+				$conflicts{$pciTable[$i]{module}}{$ownTable[$o]{module}}++;
+			}
+		}
+	} elsif ($ownTable[$o]{bus} eq "USB") {
+		sub USB_DEVICE_ID_MATCH_VENDOR() {0x0001}
+		sub USB_DEVICE_ID_MATCH_PRODUCT() {0x0002}
+		sub USB_DEVICE_ID_MATCH_DEV_LO() {0x0004}
+		sub USB_DEVICE_ID_MATCH_DEV_HI() {0x0008}
+		sub USB_DEVICE_ID_MATCH_DEV_CLASS() {0x0010}
+		sub USB_DEVICE_ID_MATCH_DEV_SUBCLASS() {0x0020}
+		sub USB_DEVICE_ID_MATCH_DEV_PROTOCOL() {0x0040}
+		sub USB_DEVICE_ID_MATCH_INT_CLASS() {0x0080}
+		sub USB_DEVICE_ID_MATCH_INT_SUBCLASS() {0x0100}
+		sub USB_DEVICE_ID_MATCH_INT_PROTOCOL() {0x0200}
+
+		for ($i = 0; $i <= $#usbTable; $i++) {
+			next if($usbTable[$i]{match_flags} & USB_DEVICE_ID_MATCH_VENDOR) && ($ownTable[$o]{idVendor} != $usbTable[$i]{idVendor});
+			next if($usbTable[$i]{match_flags} & USB_DEVICE_ID_MATCH_PRODUCT) && ($ownTable[$o]{idProduct} != $usbTable[$i]{idProduct});
+
+			next if($usbTable[$i]{match_flags} & ~(USB_DEVICE_ID_MATCH_VENDOR|USB_DEVICE_ID_MATCH_PRODUCT));
+			
+			$conflicts{$usbTable[$i]{module}}{$ownTable[$o]{module}}++;
+		}
+	}
+}
+
+foreach $module (keys %conflicts) {
+	print $module, " ", join(" ", keys %{$conflicts{$module}}), "\n";
+}
+
+exit $exitcode;
