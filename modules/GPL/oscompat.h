@@ -197,7 +197,9 @@ extern task_queue tq_timer, tq_immediate, tq_disk;
  * interrupt.
  */
 
-#ifdef STATIC_TQUEUE_LOCK
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+static DEFINE_SPINLOCK(tqueue_lock);
+#elif defined(STATIC_TQUEUE_LOCK)
 static spinlock_t tqueue_lock __attribute__((unused)) = SPIN_LOCK_UNLOCKED;
 #else
 extern spinlock_t tqueue_lock;

@@ -10,7 +10,7 @@ TOP= ..
 include $(TOP)/config.mak
 -include $(TOP)/modules/imported/makeflags.mak
 
-CFLAGS =	-I$(TOP)/modules/imported/include -I$(TOP)/modules/include
+CFLAGS +=	-I$(TOP)/modules/imported/include -I$(TOP)/modules/include
 CFLAGS +=	$(IMPORTED_FRAMEWORK_DEFS) $(IMPORTED_GENERAL_DEFS)
 CFLAGS +=	-DCNXTTARGET="\"$(CNXTTARGET)\""
 
@@ -41,13 +41,13 @@ $(CNXTSBINDIR):
 	$(MKDIR) -p $@
 
 $(CNXTTARGET)diag: diag.o modemexpert.o
-	$(CC) -o $@ $^
+	$(CC) ${LDFLAGS} -o $@ $^
 
 $(CNXTTARGET)scr: scr.o
-	$(CC) -o $@ $^
+	$(CC) ${CFLAGS} ${LDFLAGS} -o $@ $^
 
 $(CNXTTARGET)dmp: dmp.o
-	$(CC) -o $@ $^
+	$(CC) ${CFLAGS} ${LDFLAGS} -o $@ $^
 
 clean:
 	rm -f *.o $(ALL)

@@ -36,7 +36,11 @@ typedef struct {
 
 static fpstate_t fpstates[NFPSTATES];
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+static DEFINE_SPINLOCK(fpstates_lock);
+#else
 static spinlock_t fpstates_lock __attribute__((unused)) = SPIN_LOCK_UNLOCKED;
+#endif
 
 static inline void
 hsf_kernel_fpu_begin(fpstate_t *fpstate)

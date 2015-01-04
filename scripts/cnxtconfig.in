@@ -2027,9 +2027,9 @@ UNREGISTER	^ttyS@CNXTSERDEV@0$ CFUNCTION GLOBAL unlink modem'
 	if [ -d /etc/udev/rules.d ]; then
 		rm -f /etc/udev/rules.d/00-@CNXTTARGET@.rules
 		if [ "@CNXTDRIVER@" = "dgc" ]; then
-			echo 'KERNEL=="ttyACM0", SYMLINK="modem"' > /etc/udev/rules.d/00-@CNXTTARGET@.rules
+			echo 'KERNEL=="ttyACM0", SYMLINK="modem", GROUP="dialout"' > /etc/udev/rules.d/99-@CNXTTARGET@.rules
 		else
-		echo 'KERNEL=="ttyS@CNXTSERDEV@0", SYMLINK="modem"' > /etc/udev/rules.d/00-@CNXTTARGET@.rules
+		echo 'KERNEL=="ttyS@CNXTSERDEV@0", SYMLINK="modem", GROUP="dialout"' > /etc/udev/rules.d/99-@CNXTTARGET@.rules
 	fi
 	fi
 

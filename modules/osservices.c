@@ -48,7 +48,9 @@
 #include <linux/delay.h>
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39))
 #include <linux/smp_lock.h>
+#endif
 #include <linux/file.h>
 #include <linux/kmod.h>
 
@@ -284,7 +286,12 @@ void OsLockTryUnlock(HLOCK hLock)
 
 /********************************************************************/
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+static DEFINE_SEMAPHORE(current_sem);
+static DEFINE_SPINLOCK(atomic_lock);
+#else
 static spinlock_t atomic_lock __attribute__((unused)) = SPIN_LOCK_UNLOCKED;
+#endif
 
 /****************************************************************************************
   The OsAtomicCompareAndSwap function compares the value at the specified address with 
@@ -465,7 +472,11 @@ static int cnxt_thread(OSTHRD *osthrd)
 #endif
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+	down(&current_sem);
+#else
 	lock_kernel();
+#endif
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0) )
 	exit_mm(current);
@@ -499,7 +510,11 @@ static int cnxt_thread(OSTHRD *osthrd)
 #endif
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
+	up(&current_sem);
+#else
 	unlock_kernel();
+#endif
 
 #if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) )
 	flush_signals(current); /* must be called without spinlock */

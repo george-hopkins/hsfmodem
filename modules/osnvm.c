@@ -405,7 +405,11 @@ typedef struct {
 static LIST_HEAD(nvmelem_writelist);
 static LIST_HEAD(nvm_newinst_list);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 37)
 static DECLARE_MUTEX(nvmelem_writelist_sem);
+#else
+static DEFINE_SEMAPHORE(nvmelem_writelist_sem);
+#endif
 
 /* nvmelem_writelist_sem must be held by caller */
 static BOOL NVM_WriteListAppend(const char *pathname, PVOID pBuf, UINT32 dwSize, enum NVM_FORMAT nvmFormat)

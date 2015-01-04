@@ -1063,7 +1063,11 @@ static int cnxt_flush_nvm(struct file *file, const char __user *buffer, unsigned
 
 
 #ifndef FOUND_UART_REGISTER_PORT
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 37)
 static DECLARE_MUTEX(cnxt_port_sem);
+#else
+static DEFINE_SEMAPHORE(cnxt_port_sem);
+#endif
 
 /**
  *	uart_register_port - register a serial port
