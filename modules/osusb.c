@@ -41,6 +41,14 @@
 //#define dbg(format, arg...) { UINT32 dwTime = OsGetSystemTime(); printk(KERN_DEBUG "%07lu.%03lu: "__FILE__ ": " format "\n" , dwTime/1000, dwTime%1000, ## arg); }
 //#define dbg(format, arg...) do {} while (0)
 
+#ifndef info
+#define info(format, arg...) printk(KERN_INFO KBUILD_MODNAME ": " format "\n" , ## arg)
+#endif
+
+#ifndef warn
+#define warn(format, arg...) printk(KERN_WARNING KBUILD_MODNAME ": " format "\n" , ## arg)
+#endif
+
 #define Working TRUE
 #define GET_DEVICE_PNP_STATE(_USBOSHAL_) (((_USBOSHAL_) != NULL) && (_USBOSHAL_)->bActive)
 
@@ -210,7 +218,7 @@ static PURB_LIST_ENTRY AllocateUrbListEntry(PURB_LIST ul, PUSBOSHAL pUsbOsHal, s
 		ule->bufferSize = bufferSize;
 	}
 
-	dbg("%s: ul=%p ule=%p bufsize=%ld", __FUNCTION__, ul, ule, bufferSize);
+	dbg("%s: ul=%p ule=%p bufsize=%zd", __FUNCTION__, ul, ule, bufferSize);
 	return ule;
 }
 
@@ -278,7 +286,7 @@ static BOOL InitUrbList(PURB_LIST ul, PUSBOSHAL pUsbOsHal, size_t bufferSize, in
 	INIT_LIST_HEAD(&ul->urb_list);
 	INIT_LIST_HEAD(&ul->queued_list);
 
-	dbg("%s: ul=%p bufsize=%ld nurbs=%d", __FUNCTION__, ul, bufferSize, nurbs);
+	dbg("%s: ul=%p bufsize=%zd nurbs=%d", __FUNCTION__, ul, bufferSize, nurbs);
 	while(nurbs--) {
 		PURB_LIST_ENTRY ule = AllocateUrbListEntry(ul, pUsbOsHal, bufferSize);
 		dbg("%s: ule=%p", __FUNCTION__, ule);
@@ -1037,7 +1045,7 @@ BOOL OsUsbMakeDataReceiveRequest	(HANDLE hUsbOsHal, PVOID pBuf, UINT32 nBytes)
 	PUSBOSHAL pUsbOsHal = (PUSBOSHAL)hUsbOsHal;
 	PURB_LIST_ENTRY ule;
 
-	dbg("%s: %p pBuf=%p nBytes=%ld", __FUNCTION__, hUsbOsHal, pBuf, nBytes);
+	dbg("%s: %p pBuf=%p nBytes=%u", __FUNCTION__, hUsbOsHal, pBuf, nBytes);
 
 	if (Working != GET_DEVICE_PNP_STATE(pUsbOsHal))
 		return FALSE;
@@ -1093,7 +1101,7 @@ BOOL OsUsbMakeDataTransmitRequest	(HANDLE hUsbOsHal, HANDLE hRequest, PVOID pBuf
 	PUSBOSHAL pUsbOsHal = (PUSBOSHAL)hUsbOsHal;
 	PURB_LIST_ENTRY ule = (PURB_LIST_ENTRY)hRequest;
 
-	dbg("%s: ule=%p pBuf=%p nBytes=%ld", __FUNCTION__, hRequest, pBuf, nBytes);
+	dbg("%s: ule=%p pBuf=%p nBytes=%u", __FUNCTION__, hRequest, pBuf, nBytes);
 
 	if (Working != GET_DEVICE_PNP_STATE(pUsbOsHal))
 		return FALSE;
@@ -1328,7 +1336,7 @@ BOOL OsUsbMakeControlRequest (HANDLE hUsbOsHal, HANDLE hCntrlReq, IN PVOID userC
 	USB_CTRLREQUEST *dr;
 	UINT16 snBytes = (UINT16)nBytes;
 
-	dbg("%s: ule=%p req=0x%x val=%d idx=%d pbuf=%p len=%ld", __FUNCTION__, hCntrlReq, Request, Value, Index, pBuf, nBytes);
+	dbg("%s: ule=%p req=0x%x val=%d idx=%d pbuf=%p len=%u", __FUNCTION__, hCntrlReq, Request, Value, Index, pBuf, nBytes);
 
 	if (Working != GET_DEVICE_PNP_STATE(pUsbOsHal))
 		return FALSE;
@@ -1417,7 +1425,7 @@ BOOL OsUsbMakeControlRequestSync		(HANDLE hUsbOsHal, IN UINT8 Direction, UINT8 R
 	int ret;
 	UINT8 ControlRequestBuffer[MAX_CONTROL_DATA_PACKET];
 
-	dbg("%s: req=0x%x dir=%d val=%d idx=%d pbuf=%p len=%ld", __FUNCTION__, Request, Direction, Value, Index, pBuf, *pnBytes);
+	dbg("%s: req=0x%x dir=%d val=%d idx=%d pbuf=%p len=%u", __FUNCTION__, Request, Direction, Value, Index, pBuf, *pnBytes);
 
 	if(*pnBytes > pUsbOsHal->pUsbDevice->descriptor.bMaxPacketSize0) {
 		warn("%s: nBytes (%d) larger than MaxPacketSize (%d)", __FUNCTION__, *pnBytes, pUsbOsHal->pUsbDevice->descriptor.bMaxPacketSize0);

@@ -5,19 +5,29 @@
 #
 # Written by Marc Boucher <marc@linuxant.com>
 
+proc_version_gcc()
+{
+	cat /proc/version | sed -e 's/.*(\(gcc[- ][^)]*\)).*/\1/'
+}
+
 KERNELVER="$1"
 KERNELSRC="$2"
 
-unset LANG; unset LOCALE; unset LC_TIME; unset LC_ALL
+unset LANG; unset LOCALE; unset LANGUAGE; unset LC_TIME; unset LC_ALL; unset LC_MESSAGES
 
 if [ -n "${RPM_BUILD_ROOT}${DEB_HOST_GNU_SYSTEM}" ]; then
 	if [ -f "${KERNELSRC}/kernelcompiler" ]; then
 		kstr="`cat \"${KERNELSRC}/kernelcompiler\"`"
 	else
-		kstr="gcc version 3.2"
+		if [ "`uname -r`" = "${KERNELVER}" ]; then
+			# This situation happens when using "make rpmprecomp" or "make debprecomp"
+			kstr="`proc_version_gcc`"
+		else
+			kstr="gcc version 3.2"
+		fi
 	fi
 else
-	kstr="`cat /proc/version | sed -e 's/.*(\(gcc [^)]*\)).*/\1/'`"
+	kstr="`proc_version_gcc`"
 fi
 
 case "$kstr" in

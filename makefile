@@ -27,7 +27,8 @@ endif
 #endif
 endif
 
-SYMLINK_SUPPORT := $(shell ln -s test1 test2 > /dev/null 2>&1; if [ $$? -eq 1 ]; then echo "no"; else rm -f test2; echo "yes"; fi)
+SYMLINK_SUPPORT := $(shell if ln -sf symlinktest .lntst.$$$$ > /dev/null 2>&1; then echo yes; else echo no; fi; rm -f .lntst.*)
+
 
 ifeq ($(IMPORTED_TARGET),TARGET_DGC_LINUX)
 SUBDIRS = scripts modules
@@ -43,6 +44,8 @@ default:
 #	@echo "    \"make modules\" to recompile the kernel modules (normally done by $(CNXTTARGET)config)"
 	@echo "    \"make clean\" to remove objects and other derived files"
 	@echo "    \"$(CNXTTARGET)config\" (after installation) to setup your modem"
+	@echo "    \"make rpmprecomp\" to build a pre-compiled RPM package for the `uname -r` kernel"
+	@echo "    \"make debprecomp\" to build a pre-compiled DEB package for the `uname -r` kernel"
 	@echo ""
 	@false
 
@@ -80,14 +83,14 @@ clean install uninstall:: symlink-support
 		$(MAKE) -C $$subdir $@ || exit $$?; \
 	done
 
-install:: $(CNXTLIBDIR) LICENSE
+install:: $(CNXTLIBDIR) $(CNXTETCDIR) LICENSE $(CNXTETCDIR)/log
 	$(INSTALL) -m 444 LICENSE $(CNXTLIBDIR)
 	@(echo -n "TAR " ; pwd ) > "$(CNXTETCDIR)/package"
 	@echo ""
 	@echo "To complete the installation and configuration of your modem,"
 	@echo "please run \"$(CNXTTARGET)config\" (or \"$(CNXTSBINDIR)/$(CNXTTARGET)config\")"
 
-$(CNXTLIBDIR):
+$(CNXTLIBDIR) $(CNXTETCDIR):
 	$(MKDIR) -p $@
 
 uninstall::
@@ -143,6 +146,12 @@ endif
 endif
 RPMTOPDIRDEFINED=$(shell grep -q '%_topdir' $$HOME/.rpmmacros 2>/dev/null && echo yes)
 
+ifeq ($(RPMOPTEVAL),yes)
+RPMTARGETCPU=$(shell rpm --eval '%_target_cpu')
+else
+RPMTARGETCPU=$(shell uname -i)
+endif
+
 ifneq ($(RPMOPTDEFINE),yes)
 UID=$(shell id -u 2>/dev/null)
 ifneq ($(UID),0)
@@ -158,14 +167,11 @@ endif
 
 ifneq ($(RPMTOPDIR),)
 RPMDIRS=$(patsubst %, $(RPMTOPDIR)/%, BUILD RPMS SPECS SRPMS)
-
-$(RPMDIRS):
-	mkdir -p $@
 endif
 
 DEBDIRS=$(patsubst %, packages/DEBS/%, i386 amd64 all)
 
-$(DEBDIRS):
+$(RPMDIRS) $(DEBDIRS) $(CNXTETCDIR)/log:
 	mkdir -p $@
 
 DISTROKERNHDRSDIR= /home/cnxt/distrokernhdrs
@@ -209,6 +215,7 @@ getdebverdist=$(word 2,$(subst @, ,$(subst _$(*D),,$(subst _k2,@2,$(*F)))))
 getdebwords=$(subst _, ,$(call getdebverdist))
 getdebdist=$(if $(call getdebwords),$(word $(words $(call getdebwords)),$(call getdebwords)),generic)
 getdebver=$(subst _,-,$(subst _$(call getdebdist),,$(call getdebverdist)))
+getdebrequires=$(foreach t, $(REQUIRES),$(if $(filter $(call getdebver),$(REQUIRES_$(t))),$(REQUIRES_VALUE_$(t))))
 $(BINARYDEBS): packages/DEBS/%.deb:
 	@echo ""
 	@echo "================================================================================"
@@ -216,6 +223,10 @@ $(BINARYDEBS): packages/DEBS/%.deb:
 	@echo "================================================================================"
 	rm -fr modules/binaries/linux-*
 	@k="$(call getdebver)"; d="$(call getdebdist)"; \
+	sed -e 's/^Depends:.*$$/Depends: $(call getdebrequires)/g' < debian/control > debian/control.tmp; \
+	chmod --reference=debian/control debian/control.tmp; \
+	rm -f debian/control; \
+	mv debian/control.tmp debian/control; \
 	if [ -z "$$k" ]; then \
 		sed -e 's/$(CNXTTARGET)modem (.*)/$(CNXTTARGET)modem ($(CNXTLINUXVERSION_DEBIAN))/' < debian/changelog > debian/changelog.tmp; \
 		chmod --reference=debian/changelog debian/changelog.tmp; \
@@ -234,6 +245,22 @@ $(BINARYDEBS): packages/DEBS/%.deb:
 	mv ../$(CNXTTARGET)modem_*.deb packages/DEBS/$(*D)/$(@F)
 	rm -f ../$(CNXTTARGET)modem_* ../$(CNXTTARGET)modem-doc_*
 
+UNAMER := $(shell uname -r)
+CUSTOMDEB := packages/DEBS/$(IMPORTED_ARCH_DEBIAN)/$(CNXTTARGET)modem_$(CNXTLINUXVERSION_DEBIAN)-k$(subst -,_,$(UNAMER))_custom_$(IMPORTED_ARCH_DEBIAN).deb
+
+$(CUSTOMDEB): $(TARPKG)
+	@sed -e 's/$(CNXTTARGET)modem (.*)/$(CNXTTARGET)modem ($(CNXTLINUXVERSION_DEBIAN)-k$(subst _,-,$(UNAMER))-$(CNXTLINUXDEB_REL).custom)/' < debian/changelog > debian/changelog.tmp; \
+	chmod --reference=debian/changelog debian/changelog.tmp; \
+	rm -f debian/changelog; \
+	mv debian/changelog.tmp debian/changelog; \
+	( echo CNXTDRIVER=$(CNXTDRIVER); echo "TARGET_KERNEL=$(UNAMER)"; echo "TARGET_DISTRO=custom"; echo "PACKAGE_NAME=$(@F)"; echo "PACKAGE_ARCH=$(*D)" ) > debian/target.mak
+	unset LANG; unset LOCALE; unset LC_TIME; unset LC_ALL; dpkg-buildpackage -a$(IMPORTED_ARCH_DEBIAN) -us -uc || true
+	rm -f debian/target.mak
+	mv ../$(CNXTTARGET)modem_*.deb packages/DEBS/$(IMPORTED_ARCH_DEBIAN)/$(@F)
+	rm -f ../$(CNXTTARGET)modem_* ../$(CNXTTARGET)modem-doc_*
+
+.PHONY:
+debprecomp: clean $(DEBFILES) packages/DEBS/$(IMPORTED_ARCH_DEBIAN) packages/DEBS/all $(CUSTOMDEB)
 
 .PHONY: debdist
 debdist: clean $(DEBFILES) packages/DEBS/$(IMPORTED_ARCH_DEBIAN) packages/DEBS/all $(BINARYDEBS)
@@ -281,7 +308,8 @@ SOURCERPM  = $(subst /src/,/SRPMS/,packages/$(call rpmname,$(CNXTTARGET)modem,sr
 
 NVMCVTDIR:=/tmp/$(CNXTTARGET)modem-$(CNXTLINUXVERSION)-dist-nvmcvtcache
 
-getkdistro=$(subst _,-,$(subst -$(CNXTLINUXRPM_REL), ,$(word 2,$(subst @, ,$(subst .$(*D),,$(subst _k,@,$(*F)))))))
+getkdistro=$(subst _,-,$(subst -$(CNXTLINUXRPM_REL), ,$(word 2,$(subst @, ,$(patsubst %.$(*D),%,$(subst _k,@,$(*F)))))))
+getrequires=$(foreach t, $(REQUIRES),$(if $(filter $(call getkdistro),$(REQUIRES_$(t))),$(REQUIRES_VALUE_$(t))))
 $(BINARYRPMS): packages/RPMS/%.rpm:
 	@echo ""
 	@echo "================================================================================"
@@ -291,8 +319,17 @@ $(BINARYRPMS): packages/RPMS/%.rpm:
 		if [ -z "$$k" ]; then \
 			$(RPMBUILD) -tb $(RPMBUILDARGS) --target $(*D) $(TARPKG); \
 		else \
-			$(RPMBUILD) -tb --define="_target_distro $$d" --define="_target_kernel $$k" $(RPMBUILDARGS) --target $(*D) $(TARPKG); \
+			$(RPMBUILD) -tb --define="_target_distro $$d" --define="_target_kernel $$k" --define="_requires $(call getrequires)" $(RPMBUILDARGS) --target $(*D) $(TARPKG); \
 		fi
+
+CUSTOMRPM := packages/RPMS/$(RPMTARGETCPU)/$(CNXTTARGET)modem-$(CNXTLINUXVERSION)_k$(subst -,_,$(UNAMER))-1custom.$(RPMTARGETCPU).rpm
+
+$(CUSTOMRPM): $(TARPKG)
+	@NVMCVTDIR=$(NVMCVTDIR); export NVMCVTDIR; \
+	$(RPMBUILD) -tb --define="_target_distro custom" $(RPMBUILDARGS) $(TARPKG)
+
+.PHONY: rpmprecomp
+rpmprecomp: $(RPMDIRS) $(CUSTOMRPM)
 
 ifneq ($(PDFDOC),)
 DOCRPM  = packages/RPMS/$(call rpmname,$(CNXTTARGET)modem-doc,noarch,generic)
@@ -383,7 +420,9 @@ resignrpms:
 ziprpms: $(ALLRPMSZIP)
 zipdebs: $(ALLDEBSZIP)
 
+ifeq ($(CNXTDRIVER),hcf)
 PPCPKG=$(wildcard ../hcfusbmodem*powerpc*.tar.gz)
+endif
 
 RELTAR = $(shell if [ -f "$(CNXTTARGET)modem-$(CNXTLINUXVERSION).tar.gz" ]; then echo yes; else echo no; fi)
 RELRPMS = $(shell if [ -d "packages/RPMS" ]; then echo yes; else echo no; fi)

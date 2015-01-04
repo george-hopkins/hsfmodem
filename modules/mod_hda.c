@@ -6,6 +6,7 @@
  * agree to these terms before using or distributing this software.
  *
  */
+
 #include "oscompat.h"
 #include "osservices.h"
 

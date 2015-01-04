@@ -8,7 +8,12 @@
 ifeq ($(KBUILD_BUILTIN)$(KBUILD_MODULES)$(KBUILD_CHECKSRC),)
 TOP := ..
 else
-TOP := $(shell cd $(obj)/.. && pwd)
+ifeq ($(obj),)
+modroot := $(M)
+else
+modroot := $(obj)
+endif
+TOP := $(shell cd $(modroot)/.. && pwd)
 WITHIN_KBUILD=yes
 endif
 
@@ -37,6 +42,8 @@ else
 ON_BUILD_SYSTEM := yes
 endif
 
+EXTRA_CFLAGS += -DCNXTLINUXVERSION_NODOT=$(subst .,,$(CNXTLINUXVERSION))
+
 # Configure location of current 2.4 kernel source directory for compiling
 CNXT_KERNELSRC := /lib/modules/$(shell uname -r)/build
 
@@ -53,7 +60,7 @@ endif
 KERNELSRC_EXISTS := $(shell test -r ${CNXT_KERNELSRC}/include/linux/version.h && echo yes || echo no)
 endif
 
-UTS_FILE := $(shell if [ -e "${CNXT_KERNELSRC}/include/linux/utsrelease.h" ]; then echo "${CNXT_KERNELSRC}/include/linux/utsrelease.h"; else echo "${CNXT_KERNELSRC}/include/linux/version.h"; fi)
+UTS_FILE := $(shell for hdr in linux/utsrelease.h generated/utsrelease.h linux/version.h; do test -r "${CNXT_KERNELSRC}/include/$${hdr}" && echo "${CNXT_KERNELSRC}/include/$${hdr}" && exit 0; done; exit 1)
 
 KERNELVER := $(shell echo UTS_RELEASE | gcc -E ${DISTRO_CFLAGS} -I${CNXT_KERNELSRC}/include -include $(UTS_FILE) - | grep '^"' | tr -d '" 	')
 
@@ -62,20 +69,23 @@ CNXT_MODS_DIR := $(KMODS_DIR)/extra
 # patsubst used here since CNXT_MODS_DIR may be overridden to point to /binaries/ directory without /extra or /updates.
 CNXT_SND_MODS_DIR := $(patsubst %/extra,%/updates,$(CNXT_MODS_DIR))
 
-# On SuSE 9.0 and up, CNXT_KERNELSRC points to an incomplete kernel source
+# On SuSE 9.0 and up, as well as Debian 2.6.29-1-* kernels and up, CNXT_KERNELSRC points to an incomplete kernel source
 # directory and some include files are not available in this tree
-SUSE_OBJ_TREE := $(shell if grep -q '^KERNELSRC ' "${CNXT_KERNELSRC}/Makefile" 2>/dev/null && [ -d "${CNXT_KERNELSRC}" ]; then echo "yes"; else echo "no"; fi)
+DIFF_OBJ_TREE := $(shell if grep -q '^\(KERNELSRC\)\|\(MAKEARGS\) ' "${CNXT_KERNELSRC}/Makefile" 2>/dev/null && [ -d "${CNXT_KERNELSRC}" ]; then echo "yes"; else echo "no"; fi)
 
-ifeq ($(SUSE_OBJ_TREE),yes)
-REAL_KERNELSRC := $(shell grep '^KERNELSRC ' "${CNXT_KERNELSRC}/Makefile" 2>/dev/null | awk '{print $$3}')
+ifeq ($(DIFF_OBJ_TREE),yes)
+REAL_KERNELSRC := $(shell awk '{ if ($$1 == "MAKEARGS" && $$3 == "-C") print $$4; if ($$1 == "KERNELSRC") print $$3; }' "${CNXT_KERNELSRC}/Makefile")
 # Deal with a relative path
 REAL_KERNELSRC := $(if $(filter ../%, $(REAL_KERNELSRC)), $(CNXT_KERNELSRC)/,)$(REAL_KERNELSRC)
 else
 REAL_KERNELSRC := $(CNXT_KERNELSRC)
 endif
 
+KERNELARCH := $(subst i386,x86,$(subst x86_64,x86,$(IMPORTED_ARCH)))
+
 # On some newer SuSE kernels, the include directory doesn't have the asm symlink, this symlink is in the include2 directory of the fake kernel tree instead
-REAL_KERNELSRC_INCLUDE_ASM := $(shell test -e $(CNXT_KERNELSRC)/include2/asm && echo $(CNXT_KERNELSRC)/include2/asm || echo $(REAL_KERNELSRC)/include/asm)
+# Starting 2.6.28, most include/asm headers were moved to arch/<arch>/include/asm
+REAL_KERNELSRC_INCLUDE_ASM := $(shell for p in $(CNXT_KERNELSRC)/include2/asm $(REAL_KERNELSRC)/arch/$(KERNELARCH)/include/asm; do if test -e $${p}; then echo $${p}; exit 0; fi; done; for p in arch/$(KERNELARCH)/include/asm include/asm; do if test -e $(CNXT_KERNELSRC)/$${p}; then echo $(REAL_KERNELSRC)/$${p}; exit 0; fi; done;)
 
 ifeq ($(CNXTTARGET),hsf)
 REPLACE_HDA := true
@@ -89,7 +99,7 @@ endif
 #CC= gcc
 CC := $(shell $(TOP)/modules/kernelcompiler.sh $(KERNELVER) $(CNXT_KERNELSRC))
 
-FOUND_PCI_DEV_SLOT_NAME := $(shell grep -q 'slot_name' ${REAL_KERNELSRC}/include/linux/pci.h 2>/dev/null && echo -DFOUND_PCI_DEV_SLOT_NAME)
+FOUND_PCI_DEV_SLOT_NAME := $(shell grep -q '[ 	]slot_name' ${REAL_KERNELSRC}/include/linux/pci.h 2>/dev/null && echo -DFOUND_PCI_DEV_SLOT_NAME)
 FOUND_DEVFS := $(shell [ -e "${REAL_KERNELSRC}/include/linux/devfs_fs_kernel.h" ] && echo -DFOUND_DEVFS)
 
 EXTRA_CFLAGS+= $(FOUND_PCI_DEV_SLOT_NAME) $(FOUND_DEVFS)
@@ -120,8 +130,19 @@ FOUND_IRQ_HANDLER_T := $(shell grep -q 'irq_handler_t' ${REAL_KERNELSRC}/include
 FOUND_USB_COMPLETE_PT_REGS := $(shell grep -q 'usb_complete_t.*pt_regs' ${REAL_KERNELSRC}/include/linux/usb.h 2>/dev/null && echo -DFOUND_USB_COMPLETE_PT_REGS)
 FOUND_KTERMIOS := $(shell grep -q 'ktermios' ${REAL_KERNELSRC}/include/linux/serial_core.h 2>/dev/null && echo -DFOUND_KTERMIOS)
 FOUND_PCI_GET_DEVICE := $(shell grep -q 'pci_get_device' ${REAL_KERNELSRC}/include/linux/pci.h 2>/dev/null && echo -DFOUND_PCI_GET_DEVICE)
+FOUND_LINUX_SEMAPHORE := $(shell test -e  ${REAL_KERNELSRC}/include/linux/semaphore.h && echo -DFOUND_LINUX_SEMAPHORE)
+FOUND_CLASS_DEVICE := $(shell grep -q 'class_device_create' ${REAL_KERNELSRC}/include/linux/device.h 2>/dev/null && echo -DFOUND_CLASS_DEVICE)
+FOUND_THREAD_XSTATE := $(shell grep -q 'thread_xstate' ${REAL_KERNELSRC_INCLUDE_ASM}/processor.h 2>/dev/null && echo -DFOUND_THREAD_XSTATE)
+FOUND_DEVICE_CREATE_DRVDATA := $(shell grep -q 'device_create_drvdata' ${REAL_KERNELSRC}/include/linux/device.h 2>/dev/null && echo -DFOUND_DEVICE_CREATE_DRVDATA)
+PAREN := (
+FOUND_DEVICE_CREATE_WITH_DRVDATA := $(shell grep -A3 'device_create$(PAREN)' ${REAL_KERNELSRC}/include/linux/device.h | grep -q drvdata && echo -DFOUND_DEVICE_CREATE_WITH_DRVDATA)
+FOUND_STRUCT_TTY_PORT := $(shell grep -q 'tty_port' ${REAL_KERNELSRC}/include/linux/serial_core.h 2>/dev/null && echo -DFOUND_STRUCT_TTY_PORT)
+FOUND_NO_STRUCT_UART_INFO := $(shell [ -r ${REAL_KERNELSRC}/include/linux/serial_core.h ] && ! grep -q 'uart_info' ${REAL_KERNELSRC}/include/linux/serial_core.h 2>/dev/null && echo -DFOUND_NO_STRUCT_UART_INFO)
+FOUND_CURRENT_CRED := $(shell grep -q 'struct cred' ${REAL_KERNELSRC}/include/linux/sched.h 2>/dev/null && echo -DFOUND_CURRENT_CRED)
+FOUND_LINUX_BYTEORDER_SWAB := $(shell test -e ${REAL_KERNELSRC}/include/linux/byteorder/swab.h 2>/dev/null && echo -DFOUND_LINUX_BYTEORDER_SWAB)
+FOUND_DEV_NAME := $(shell grep -q 'dev_name' ${REAL_KERNELSRC}/include/linux/device.h 2>/dev/null && echo -DFOUND_DEV_NAME)
 
-EXTRA_CFLAGS+= $(FOUND_CLASS_SIMPLE) $(FOUND_UART_REGISTER_PORT) $(FOUND_TTY_START_STOP) $(FOUND_CLASS_DEVICE_PARENT) $(FOUND_MODULE_PARAM) $(FOUND_PM_MESSAGE_T) $(FOUND_PM_MESSAGE_STRUCT) $(FOUND_PCI_CHOOSE_STATE) $(FOUND_LINUX_SUSPEND) $(FOUND_USB_DRIVER_OWNER) $(FOUND_PCI_REGISTER_DRIVER) $(FOUND_TTY_NEW_API) $(FOUND_TOUCH_ATIME) $(FOUND_SEEK_MODES) $(FOUND_LINUX_CONFIG) $(FOUND_KERNEL_EXECVE) $(FOUND_IRQ_HANDLER_T) $(FOUND_USB_COMPLETE_PT_REGS) $(FOUND_KTERMIOS) $(FOUND_PCI_GET_DEVICE)
+EXTRA_CFLAGS+= $(FOUND_CLASS_SIMPLE) $(FOUND_UART_REGISTER_PORT) $(FOUND_TTY_START_STOP) $(FOUND_CLASS_DEVICE_PARENT) $(FOUND_MODULE_PARAM) $(FOUND_PM_MESSAGE_T) $(FOUND_PM_MESSAGE_STRUCT) $(FOUND_PCI_CHOOSE_STATE) $(FOUND_LINUX_SUSPEND) $(FOUND_USB_DRIVER_OWNER) $(FOUND_PCI_REGISTER_DRIVER) $(FOUND_TTY_NEW_API) $(FOUND_TOUCH_ATIME) $(FOUND_SEEK_MODES) $(FOUND_LINUX_CONFIG) $(FOUND_KERNEL_EXECVE) $(FOUND_IRQ_HANDLER_T) $(FOUND_USB_COMPLETE_PT_REGS) $(FOUND_KTERMIOS) $(FOUND_PCI_GET_DEVICE) $(FOUND_LINUX_SEMAPHORE) $(FOUND_CLASS_DEVICE) $(FOUND_THREAD_XSTATE) $(FOUND_DEVICE_CREATE_DRVDATA) $(FOUND_DEVICE_CREATE_WITH_DRVDATA) $(FOUND_STRUCT_TTY_PORT) $(FOUND_CURRENT_CRED) $(FOUND_LINUX_BYTEORDER_SWAB) $(FOUND_DEV_NAME) $(FOUND_NO_STRUCT_UART_INFO)
 
 FOUND_KZALLOC := $(shell grep -q 'kzalloc' ${REAL_KERNELSRC}/include/linux/slab.h 2>/dev/null && echo -DFOUND_KZALLOC)
 FOUND_OPEN_SUBSTREAM_NOFILE := $(shell grep -q 'snd_pcm_open_substream.*struct[ \t]*file' ${REAL_KERNELSRC}/include/sound/pcm.h 2>/dev/null || echo -DFOUND_OPEN_SUBSTREAM_NOFILE)
@@ -139,6 +160,8 @@ ifeq ($(ON_BUILD_SYSTEM)-$(CONFIG_SND_HDA_INTEL),no-)
 # and CONFIG_SND_HDA_INTEL is not enabled in the kernel .config file
 CONFIG_SND_HDA_INTEL=$(shell modprobe -n snd-hda-intel > /dev/null 2>&1 && echo y || echo n)
 endif
+
+MODULAR_HDA := $(shell test -e  ${REAL_KERNELSRC}/include/sound/hda_codec.h && echo yes || echo no)
 
 else
 KO= o
@@ -158,8 +181,12 @@ CONFIG_SND_HDA_INTEL=$(shell echo 'CONFIG_SND_HDA_INTEL CONFIG_SND_HDA_INTEL_MOD
 
 EXTRA_CFLAGS+= -include $(CNXT_KERNELSRC)/include/linux/config.h
 EXTRA_CFLAGS+= $(MODVERFLAGS)
-EXTRA_CFLAGS+= -DFOUND_TTY_START_STOP
+EXTRA_CFLAGS+= -DFOUND_TTY_START_STOP -DFOUND_LINUX_BYTEORDER_SWAB
 endif # KBUILD_SUPPORTED
+
+paren := (
+FOUND_KILL_PROC := $(shell grep -q 'kill_proc$(paren)' ${REAL_KERNELSRC}/include/linux/sched.h 2>/dev/null && echo -DFOUND_KILL_PROC)
+EXTRA_CFLAGS+= $(FOUND_KILL_PROC)
 
 ## END OF CONFIGURATION SECTION
 ## no changes should be necessary beyond this point
@@ -195,7 +222,7 @@ endif
 
 CLEAN= *.o GPL/*.o *.ko GPL/*.ko *.mod.c GPL/*.mod.c .*.cmd GPL/.*.cmd .tmp_versions
 ifeq ($(KBUILD_SUPPORTED),yes)
-CLEAN+= .tmp_versions $(patsubst %, ${CNXT_KERNELSRC}/.tmp_versions/%, $(ALL_MODS:.$(KO)=.mod)) Modules.symvers GPL/hda/Modules.symvers
+CLEAN+= .tmp_versions $(patsubst %, ${CNXT_KERNELSRC}/.tmp_versions/%, $(ALL_MODS:.$(KO)=.mod)) Modules.symvers GPL/hda/Modules.symvers Module.symvers GPL/hda/Module.symvers modules.order GPL/hda/modules.order Module.markers GPL/hda/Module.markers
 endif
 
 .PHONY: clean
@@ -207,9 +234,9 @@ ifeq ($(CNXTDRIVER),hsf)
 	-(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "M=$(MODULES_SRC_DIR)/GPL/hda" "CC=$(CC)" "HDA_CFLAGS=$(HDA_CFLAGS)" clean)
 endif
 else
-	-(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "SUBDIRS+=$(MODULES_SRC_DIR)" "SUBDIRS+=$(MODULES_SRC_DIR)" "CC=$(CC)" clean)
+	-(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "SUBDIRS+=$(MODULES_SRC_DIR)" "CC=$(CC)" clean)
 ifeq ($(CNXTDRIVER),hsf)
-	-(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "SUBDIRS+=$(MODULES_SRC_DIR)/GPL/hda" "SUBDIRS+=$(MODULES_SRC_DIR)/GPL/hda" "CC=$(CC)" "HDA_CFLAGS=$(HDA_CFLAGS)" clean)
+	-(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "SUBDIRS+=$(MODULES_SRC_DIR)/GPL/hda" "CC=$(CC)" "HDA_CFLAGS=$(HDA_CFLAGS)" clean)
 endif
 endif
 endif
@@ -234,6 +261,9 @@ PRP_MODS+= $(CNXTTARGET)pcibasic3.$(KO)
 ifneq ($(CONFIG_USB),)
 ifneq ($(CONFIG_USB),n)
 PRP_MODS+= $(CNXTTARGET)usbcd2.$(KO)
+endif
+ifeq ($(MODULAR_HDA),yes)
+PRP_MODS+= snd-hda-codec-hsfmodem.$(KO)
 endif
 endif
 ifneq ($(CONFIG_SND_HDA_INTEL),)
@@ -271,13 +301,13 @@ MODULES_SRC_DIR=$(shell pwd)
 all:
 ifeq ($(KBUILD_EXTMOD_SUPPORTED),yes)
 	(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "M=$(MODULES_SRC_DIR)" "CC=$(CC)" modules)
-ifeq ($(REPLACE_HDA),true)
+ifeq ($(REPLACE_HDA)|$(MODULAR_HDA),true|no)
 	-(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "M=$(MODULES_SRC_DIR)/GPL/hda" "CC=$(CC)" "HDA_CFLAGS=$(HDA_CFLAGS)" modules)
 endif
 else
-	(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "SUBDIRS+=$(MODULES_SRC_DIR)" "SUBDIRS+=$(MODULES_SRC_DIR)" "CC=$(CC)" modules)
-ifeq ($(REPLACE_HDA),true)
-	-(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "SUBDIRS+=$(MODULES_SRC_DIR)/GPL/hda" "SUBDIRS+=$(MODULES_SRC_DIR)/GPL/hda" "CC=$(CC)" "HDA_CFLAGS=$(HDA_CFLAGS)" modules)
+	(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "SUBDIRS+=$(MODULES_SRC_DIR)" "CC=$(CC)" modules)
+ifeq ($(REPLACE_HDA)|$(MODULAR_HDA),true|no)
+	-(cd ${CNXT_KERNELSRC} && make "CNXT_KERNELSRC=${CNXT_KERNELSRC}" "SUBDIRS+=$(MODULES_SRC_DIR)/GPL/hda" "CC=$(CC)" "HDA_CFLAGS=$(HDA_CFLAGS)" modules)
 endif
 endif
 else
@@ -399,11 +429,18 @@ ifneq ($(KERNCOMPVER),)
 		strip --strip-debug $$m; \
 	done
 endif
+	for m in "$(CNXTTARGET)"*.ko GPL/hda/*.ko; do \
+		[ -r $$m ] || continue; \
+		objcopy --rename-section .ctors=.ctors_not_used $$m; \
+	done
 	rm -f "$(CNXT_MODS_DIR)/$(CNXTTARGET)"*.$(KO)
 ifeq ($(KBUILD_SUPPORTED),yes)
 	$(INSTALL) -m 644 "$(CNXTTARGET)"*.ko $(CNXT_MODS_DIR)
-ifeq ($(REPLACE_HDA),true)
+ifeq ($(REPLACE_HDA)|$(MODULAR_HDA),true|no)
 	-$(INSTALL) -m 644 GPL/hda/*.ko $(CNXT_SND_MODS_DIR)
+endif
+ifeq ($(MODULAR_HDA),yes)
+	$(INSTALL) -m 644 "snd-hda-codec-$(CNXTTARGET)modem.ko" $(CNXT_MODS_DIR)
 endif
 else
 	$(INSTALL) -m 644 $(ALL_MODS) $(CNXT_MODS_DIR)

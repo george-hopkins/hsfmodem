@@ -2,10 +2,12 @@ Source: @CNXTTARGET@modem
 Section: non-free
 Priority: optional
 Maintainer: Linuxant inc. <modem.support@linuxant.com>
+Build-Depends: debhelper (>> 3.0.0)
 Standards-Version: 3.1.0.0
 
 Package: @CNXTTARGET@modem
 Architecture: any
+Depends:
 Description: @CNXTDRVDSC@ driver
 @README_FILE@
 

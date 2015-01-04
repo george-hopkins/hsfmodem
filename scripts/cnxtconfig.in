@@ -466,7 +466,7 @@ configure_license()
 get_hwprofile_list()
 {
 	echo "auto"
-	(cd ${cnxtnvmdir} && find . -follow -type d -maxdepth 1 -print) | \
+	(cd ${cnxtnvmdir} && find . -follow -maxdepth 1 -type d -print) | \
 		egrep -v '^\.(\/dynamic)?$' | sed 's@^\./@@' | sort
 }
 
@@ -849,17 +849,23 @@ right_version_file()
 right_version_kernel_tree()
 {
 	if [ -e "${KERNELSRC}/include/linux/utsrelease.h" ]; then
-		right_version_file "${KERNELSRC}/include/linux/utsrelease.h"
+		right_version_kernel_tree_file_name="${KERNELSRC}/include/linux/utsrelease.h"
 	else
-		right_version_file "${KERNELSRC}/include/linux/version.h"
+		if [ -d "${KERNELSRC}/include/generated" ]; then
+			right_version_kernel_tree_file_name="${KERNELSRC}/include/generated/utsrelease.h"
+		else
+			right_version_kernel_tree_file_name="${KERNELSRC}/include/linux/version.h"
+		fi
 	fi
+
+	right_version_file "${right_version_kernel_tree_file_name}"
 
 	return $?
 }
 
 update_module_dependencies()
 {
-	depmod -a -e -u 2>&1 | tee /dev/fd/2 | grep -q "@CNXTTARGET@"
+	depmod -a -u 2>&1 | tee /dev/fd/2 | grep -q "@CNXTTARGET@"
 	declare -a pipe_status=( ${PIPESTATUS[@]} )
 
 	resdepmod=${pipe_status[0]}
@@ -995,7 +1001,7 @@ kernel_headers_instructions()
 			fi
 			return 0
 			;;
-		4 | 5)
+		*)
 			kernel_headers_instructions_fc4_style
 			return 0
 			;;
@@ -1111,8 +1117,14 @@ recompile_modules()
 		use_kbuild=false
 	fi
 
+	if [ -d "${KERNELSRC}/include/generated" ]; then
+		gen_hdr_dir="${KERNELSRC}/include/generated"
+	else
+		gen_hdr_dir="${KERNELSRC}/include/linux"
+	fi
+
 	if ! files_present \
-		"${KERNELSRC}/include/linux/autoconf.h" \
+		"${gen_hdr_dir}/autoconf.h" \
 		"${KERNELSRC}/include/linux/version.h"; then
 		echo ""
 		echo "WARNING: missing file ${missing_file}"
@@ -1127,7 +1139,7 @@ recompile_modules()
 		1)
 			echo ""
 			echo "WARNING: the kernel version (${FILEKERNELVER}) defined in"
-			echo "${KERNELSRC}/include/linux/version.h"
+			echo "${right_version_kernel_tree_file_name}"
 			echo "does not match the currently running kernel (${OSKERNVERS})"
 			echo "The cause of this problem is an incorrect kernel source path."
 			echo "Please check that ${KERNELSRC} points to the right tree."
@@ -1154,6 +1166,7 @@ recompile_modules()
 					return 1
 				fi
 				rm -f "${KERNELSRC}/include/linux/.config" \
+						"${KERNELSRC}/include/generated/autoconf.h" \
 						"${KERNELSRC}/include/linux/autoconf.h" \
 						"${KERNELSRC}/include/linux/version.h"
 				if ! cp -p /boot/config-${OSKERNVERS} "${KERNELSRC}/.config"; then
@@ -1183,6 +1196,7 @@ recompile_modules()
 					return 1
 				fi
 				rm -f "${KERNELSRC}/include/linux/.config" \
+						"${KERNELSRC}/include/generated/autoconf.h" \
 						"${KERNELSRC}/include/linux/autoconf.h" \
 						"${KERNELSRC}/include/linux/version.h"
 				if ! cp -p /boot/vmlinuz.autoconf.h "${KERNELSRC}/include/linux/autoconf.h" || \
@@ -1204,18 +1218,23 @@ recompile_modules()
 
 	# are we ok now?
 	if [ ! -f "${KERNELSRC}/include/linux/version.h" \
-			-o ! -f "${KERNELSRC}/include/linux/autoconf.h" ]; then
+			-o ! -f "${gen_hdr_dir}/autoconf.h" ]; then
 		remove_temp_kernel_tree
 		kernelrebuild_instructions
 		return 1
 	fi
 
-	buildlogf=/tmp/@CNXTTARGET@config-buildlog.txt
+	buildlogf="@CNXTETCDIR@/log/buildlog-`date +%Y%m%d%H%M%S`.txt"
 
 	# set FILEKERNELVER if it isn't already
 	[ -n "${FILEKERNELVER}" ] || right_version_kernel_tree
 
 	check_kernel_config || return $?
+
+	# If support for modular HDA is present in the kernel, override the decision to replace the HDA bus driver
+	if [ -e "${KERNELSRC}/include/sound/hda_codec.h" ]; then
+		REPLACE_HDA=false
+	fi
 
 	warn_builtin_hda "Building"
 
@@ -1224,7 +1243,7 @@ recompile_modules()
 	echo "${KERNELSRC}. Please wait..."
 
 	rm -f "${buildlogf}"
-	(cd ${cnxtlibdir}/modules && make "CNXT_KERNELSRC=${KERNELSRC}" "REPLACE_HDA=${REPLACE_HDA}" clean minstall) > ${buildlogf} 2>&1
+	(echo "driver version ${cnxtversion}" && cd ${cnxtlibdir}/modules && make "CNXT_KERNELSRC=${KERNELSRC}" "REPLACE_HDA=${REPLACE_HDA}" clean minstall) > ${buildlogf} 2>&1
 	res=$?
 
 	(cd ${cnxtlibdir}/modules && make "CNXT_KERNELSRC=${KERNELSRC}" clean) >/dev/null 2>&1
@@ -1271,6 +1290,11 @@ remove_kernel_modules()
 		rm -f "/lib/modules/${OSKERNVERS}/misc/@CNXTTARGET@"*.${KO}
 		rm -f "/lib/modules/${OSKERNVERS}/extra/@CNXTTARGET@"*.${KO}
 
+		if [ "@CNXTDRIVER@" = "hsf" ]; then
+			rm -f "/lib/modules/${OSKERNVERS}/misc/snd-hda-codec-hsfmodem.${KO}"
+			rm -f "/lib/modules/${OSKERNVERS}/extra/snd-hda-codec-hsfmodem.${KO}"
+		fi
+
 		for file in `find /lib/modules/${OSKERNVERS} -name '*.REPLACEDBY@CNXTTARGET@modem'`; do
 			file_orig="`echo ${file} | sed -e 's/\.REPLACEDBY@CNXTTARGET@modem//g'`"
 			if [ ! -e "${file_orig}" ]; then
@@ -1292,23 +1316,53 @@ binary_modules_avail()
 	[ -d "${cnxtlibdir}/modules/binaries/$1" ]
 }
 
-
-hda_patch_present()
+module_full_path()
 {
-	mod="`modprobe -l snd-hda-intel`"
+	module_path="`modprobe -l $1`"
+
+	if [ -z "${module_path}" ]; then
+		return
+	fi
+
+	case "${module_path}" in
+	/*)
+		echo "${module_path}"
+		return
+		;;
+	esac
+
+	# On Mandriva 2009.1 RC1, modprobe -l will return a relative path, not the full path
+	echo "/lib/modules/`uname -r`/${module_path}"
+}
+
+module_has_symbol()
+{
+	mod="`module_full_path $1`"
+	sym="$2"
 
 	if [ -z "${mod}" ]; then
 		return 1
 	fi
 
-	grep -q patch_cxthsfmodem ${mod} 2>/dev/null
+	grep -q ${sym} ${mod} 2>/dev/null
+}
+
+hda_patch_present()
+{
+	for m in snd-hda-intel snd-hda-codec-conexant; do
+		if module_has_symbol ${m} patch_cxthsfmodem; then
+			return 0
+		fi
+	done
+
+	return 1
 }
 
 disable_original_drivers()
 {
 	mods="@CNXTMODS@"
 	if [ "@CNXTDRIVER@" = "hsf" ] && ${REPLACE_HDA}; then
-		mods="${mods} snd-hda-intel snd-hda-codec"
+		mods="${mods} snd-hda-intel snd-hda-codec snd-hda-codec-hsfmodem"
 	fi
 
 	modpath="/lib/modules/${OSKERNVERS}/kernel"
@@ -1391,7 +1445,7 @@ configure_kernel()
 					# find a Conexant HDA modem, it could be an enumeration problem of the
 					# original HDA bus driver
 					echo ""
-					if ask_yesno "Would you like to use the replacement HDA modules? [yes] " 0; then
+					if ask_yesno "Would you like to use the replacement HDA modules? [no] " 1; then
 						REPLACE_HDA=true
 					else
 						REPLACE_HDA=false
@@ -1659,7 +1713,7 @@ unconfigure_serial()
 {
 	rm -f /etc/modules.d/@CNXTTARGET@ /etc/modules.d/@CNXTTARGET@.conflicts \
 			/etc/modutils/@CNXTTARGET@ /etc/modutils/@CNXTTARGET@.conflicts \
-			/etc/modprobe.d/@CNXTTARGET@ /etc/modprobe.d/@CNXTTARGET@.conflicts
+			/etc/modprobe.d/@CNXTTARGET@.conf /etc/modprobe.d/@CNXTTARGET@.conflicts.conf
 
 	update_modulesconf /dev/null modulesconf_filter_mine grep -v "# temporarily disabled by @CNXTTARGET@"
 	update_modprobeconf /dev/null modprobeconf_filter_mine grep -v "# temporarily disabled by @CNXTTARGET@"
@@ -1812,10 +1866,10 @@ configure_serial()
 # 			echo "below cdc_acm dgcusbdcp" # XXX
 #		fi
 		if [ "@CNXTDRIVER@" = "hsf" ]; then
-			echo "probeall /dev/ttyS@CNXTSERDEV@ @CNXTTARGET@pcibasic2 @CNXTTARGET@pcibasic3 @CNXTTARGET@mc97ich @CNXTTARGET@mc97via @CNXTTARGET@mc97ali @CNXTTARGET@mc97ati @CNXTTARGET@mc97sis @CNXTTARGET@usbcd2 snd_hda_intel"
+			echo "probeall /dev/ttyS@CNXTSERDEV@ @CNXTTARGET@pcibasic2 @CNXTTARGET@pcibasic3 @CNXTTARGET@mc97ich @CNXTTARGET@mc97via @CNXTTARGET@mc97ali @CNXTTARGET@mc97ati @CNXTTARGET@mc97sis @CNXTTARGET@usbcd2 snd_hda_intel snd-hda-codec-hsfmodem"
 #			echo "probeall @CNXTTARGET@serial @CNXTTARGET@pcibasic2 @CNXTTARGET@pcibasic3 @CNXTTARGET@mc97ich @CNXTTARGET@mc97via @CNXTTARGET@mc97ali @CNXTTARGET@mc97ati @CNXTTARGET@mc97sis @CNXTTARGET@usbcd2"
 			if [ -e /etc/modutils/1devfsd ]; then
-				echo "probeall /dev/tts @CNXTTARGET@pcibasic2 @CNXTTARGET@pcibasic3 @CNXTTARGET@mc97ich @CNXTTARGET@mc97via @CNXTTARGET@mc97ali @CNXTTARGET@mc97ati @CNXTTARGET@mc97sis @CNXTTARGET@usbcd2 snd_hda_intel"
+				echo "probeall /dev/tts @CNXTTARGET@pcibasic2 @CNXTTARGET@pcibasic3 @CNXTTARGET@mc97ich @CNXTTARGET@mc97via @CNXTTARGET@mc97ali @CNXTTARGET@mc97ati @CNXTTARGET@mc97sis @CNXTTARGET@usbcd2 snd_hda_intel snd-hda-codec-hsfmodem"
 			fi
 		fi
 		if [ "@CNXTDRIVER@" = "hcf" ]; then
@@ -1844,14 +1898,14 @@ configure_serial()
 				echo "install cdc_acm /sbin/modprobe dgcusbdcp; /sbin/modprobe --ignore-install cdc_acm"
 			fi
 			if [ "@CNXTDRIVER@" = "hsf" ]; then
-				echo 'install /dev/ttyS@CNXTSERDEV@ /sbin/modprobe @CNXTTARGET@pcibasic2; /sbin/modprobe @CNXTTARGET@pcibasic3; /sbin/modprobe @CNXTTARGET@mc97ich; /sbin/modprobe @CNXTTARGET@mc97via; /sbin/modprobe @CNXTTARGET@mc97ali; /sbin/modprobe @CNXTTARGET@mc97ati; /sbin/modprobe @CNXTTARGET@mc97sis; [ -e /lib/modules/`uname -r`/extra/@CNXTTARGET@usbcd2.ko ] && /sbin/modprobe @CNXTTARGET@usbcd2; /sbin/modprobe snd_hda_intel; /bin/true'
+				echo 'install /dev/ttyS@CNXTSERDEV@ /sbin/modprobe @CNXTTARGET@pcibasic2; /sbin/modprobe @CNXTTARGET@pcibasic3; /sbin/modprobe @CNXTTARGET@mc97ich; /sbin/modprobe @CNXTTARGET@mc97via; /sbin/modprobe @CNXTTARGET@mc97ali; /sbin/modprobe @CNXTTARGET@mc97ati; /sbin/modprobe @CNXTTARGET@mc97sis; [ -e /lib/modules/`uname -r`/extra/@CNXTTARGET@usbcd2.ko ] && /sbin/modprobe @CNXTTARGET@usbcd2; /sbin/modprobe snd_hda_intel; [ -e /lib/modules/`uname -r`/extra/snd-hda-codec-hsfmodem.ko ] && /sbin/modprobe snd-hda-codec-hsfmodem; /bin/true'
 				# On some systems, even if the modules dependencies are up to date, these lines are not loaded
 				# from modules.symbols
 				echo 'alias symbol:cnxthwhda_probe @CNXTTARGET@hda'
 				echo 'alias symbol:cnxthwhda_resume @CNXTTARGET@hda'
 				echo 'alias symbol:cnxthwhda_suspend @CNXTTARGET@hda'
 				if [ -e /etc/modprobe.d/devfsd ]; then
-					echo 'install /dev/serial /sbin/modprobe @CNXTTARGET@pcibasic2; /sbin/modprobe @CNXTTARGET@pcibasic3; /sbin/modprobe @CNXTTARGET@mc97ich; /sbin/modprobe @CNXTTARGET@mc97via; /sbin/modprobe @CNXTTARGET@mc97ali; /sbin/modprobe @CNXTTARGET@mc97ati; /sbin/modprobe @CNXTTARGET@mc97sis; [ -e /lib/modules/`uname -r`/extra/@CNXTTARGET@usbcd2.ko ] && /sbin/modprobe @CNXTTARGET@usbcd2 snd_hda_intel; /bin/true'
+					echo 'install /dev/serial /sbin/modprobe @CNXTTARGET@pcibasic2; /sbin/modprobe @CNXTTARGET@pcibasic3; /sbin/modprobe @CNXTTARGET@mc97ich; /sbin/modprobe @CNXTTARGET@mc97via; /sbin/modprobe @CNXTTARGET@mc97ali; /sbin/modprobe @CNXTTARGET@mc97ati; /sbin/modprobe @CNXTTARGET@mc97sis; [ -e /lib/modules/`uname -r`/extra/@CNXTTARGET@usbcd2.ko ] && /sbin/modprobe @CNXTTARGET@usbcd2 snd_hda_intel; [ -e /lib/modules/`uname -r`/extra/snd-hda-codec-hsfmodem.ko ] && /sbin/modprobe snd-hda-codec-hsfmodem; /bin/true'
 				fi
 			fi
 			if [ "@CNXTDRIVER@" = "hcf" ]; then
@@ -1871,8 +1925,8 @@ configure_serial()
 				;;
 			esac
 
-		) > ${outmodprobeconf}
-		update_modprobeconf ${outmodprobeconf} modprobeconf_filter_mine cat
+		) > ${outmodprobeconf}.conf
+		update_modprobeconf ${outmodprobeconf}.conf modprobeconf_filter_mine cat
 	fi
 
   if [ "@CNXTDRIVER@" != "dgc" ]; then
@@ -1996,8 +2050,8 @@ disable_conflicting_modules()
 	*)
 		while read mod mine; do
 			echo "install $mod /bin/true # temporarily disabled by @CNXTTARGET@ - conflicts with $mine"
-		done < "${cnxtetcdir}/.modconflicts-${OSKERNVERS}" > ${outmodprobeconf}.conflicts
-		update_modprobeconf ${outmodprobeconf}.conflicts filter_none grep -v "# temporarily disabled by @CNXTTARGET@"
+		done < "${cnxtetcdir}/.modconflicts-${OSKERNVERS}" > ${outmodprobeconf}.conflicts.conf
+		update_modprobeconf ${outmodprobeconf}.conflicts.conf filter_none grep -v "# temporarily disabled by @CNXTTARGET@"
 		;;
 	esac
 
@@ -2322,7 +2376,7 @@ dump_diagnostics()
 		if [ -n "${modprobeconf}" ]; then
 			dump_file "${modprobeconf}"
 		fi
-		dump_cmd depmod -e -a
+		dump_cmd depmod -a
 
 		dump_file /proc/tty/drivers
 		for f in /proc/tty/driver/*; do
@@ -2344,12 +2398,27 @@ dump_diagnostics()
 			fi
 		done
 
+		if [ "@CNXTDRIVER@" == "hsf" ]; then
+			for f in rpm deb; do
+				file="/usr/lib/alsa-driver-linuxant/${f}_version"
+				if [ -r "${file}" ]; then
+					dump_file "${file}"
+				fi
+			done
+		fi
+
 		dump_cmd "cd ${cnxtnvmdir} && find . -maxdepth 2 -ls"
 		dump_cmd "cd ${cnxtnvmdir} && find dynamic -follow -print -type f -exec cat {} \;"
 
 		dump_cmd ls -lR "${cnxtlibdir}/."
 
 		dump_cmd ls -lR /lib/modules/${OSKERNVERS}/misc /lib/modules/${OSKERNVERS}/extra /lib/modules/${OSKERNVERS}/updates
+
+		for f in @CNXTETCDIR@/log/*; do
+			if [ -r "${f}" ]; then
+				dump_file "${f}"
+			fi
+		done
 
 		if ${longdiag}; then
 			dump_file /lib/modules/${OSKERNVERS}/modules.pcimap
@@ -2362,6 +2431,7 @@ dump_diagnostics()
 
 			dump_file /lib/modules/${OSKERNVERS}/build/.config
 			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/version.h
+			dump_file /lib/modules/${OSKERNVERS}/build/include/generated/autoconf.h
 			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/autoconf.h
 			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/autoconf-up.h
 			dump_file /lib/modules/${OSKERNVERS}/build/include/linux/rhconfig.h
@@ -2669,7 +2739,7 @@ show_module_settings()
 		echo "Note: USB support not compiled in the driver"
 	fi
 
-	if [ ! -e "/lib/modules/${OSKERNVERS}/extra/hsfhda.${KO}" ] || ( ( [ ! -e "/lib/modules/${OSKERNVERS}/updates/snd-hda-intel.${KO}" ] || [ ! -e "/lib/modules/${OSKERNVERS}/updates/snd-hda-codec.${KO}" ] ) && ! hda_patch_present ); then
+	if [ ! -e "/lib/modules/${OSKERNVERS}/extra/hsfhda.${KO}" ] || ( ( [ ! -e "/lib/modules/${OSKERNVERS}/updates/snd-hda-intel.${KO}" ] || [ ! -e "/lib/modules/${OSKERNVERS}/updates/snd-hda-codec.${KO}" ] ) && ! hda_patch_present ) && [ ! -e /lib/modules/${OSKERNVERS}/extra/snd-hda-codec-hsfmodem.${KO} ]; then
 		if ${newline}; then
 			echo ""
 			newline=false
@@ -2747,7 +2817,7 @@ if [ "`id -u`" != "0" ]; then
 	exit $?
 fi
 
-unset LANG; unset LOCALE; unset LC_TIME; unset LC_ALL
+unset LANG; unset LOCALE; unset LANGUAGE; unset LC_TIME; unset LC_ALL; unset LC_MESSAGES
 
 umask 022
 
@@ -2756,13 +2826,12 @@ cnxtetcdir="@CNXTETCDIR@"
 cnxtnvmdir="@CNXTNVMDIR@"
 cnxtversion="@CNXTLINUXVERSION@"
 
-if [ "@CNXTDRIVER@" = "hsf" ]; then
-	KERN_CONFIG_WARNING="4KSTACKS"
-else
-	KERN_CONFIG_WARNING=
-fi
-
+KERN_CONFIG_WARNING=
 KERN_CONFIG_REQUIRED="SERIAL_CORE"
+
+if [ "@CNXTDRIVER@" = "dgc" ]; then
+	KERN_CONFIG_REQUIRED="${KERN_CONFIG_REQUIRED} USB_ACM"
+fi
 
 GCC_INSTALLED=
 
@@ -3049,6 +3118,8 @@ if ${do_cfgrcstart}; then
 	fi
 
 	ensure_driver_present
+	@CNXTTARGET@stop
+	ensure_driver_present
 elif ${do_cfgrcstop}; then
 	@CNXTTARGET@stop
 fi
@@ -3100,7 +3171,7 @@ if ${do_cfguninstall}; then
 			cd "${PACKSRCDIR}" && make uninstall
 			;;
 		RPM)
-			rpm -e @CNXTTARGET@modem
+			rpm -e --allmatches @CNXTTARGET@modem
 			;;
 		DEB)
 			dpkg -r @CNXTTARGET@modem

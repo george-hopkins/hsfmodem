@@ -21,6 +21,21 @@
 #include <linux/fs.h>
 #include <asm/uaccess.h>
 
+#ifdef FOUND_CURRENT_CRED
+static int set_current_fsuid(uid_t fsuid)
+{
+	struct cred *new;
+
+	new = prepare_creds();
+	if (!new)
+		return -ENOMEM;
+
+	new->fsuid = fsuid;
+
+	return commit_creds(new);
+}
+#endif
+
 __shimcall__
 FILE *
 OsFOpen (const char *path, const char *mode, int *errp)
@@ -64,12 +79,30 @@ OsFOpen (const char *path, const char *mode, int *errp)
 #endif
 
 again:
+#ifdef FOUND_CURRENT_CRED
+	origfsuid = current_fsuid();
+	error = set_current_fsuid(0);
+	if (error) {
+		filp = NULL;
+		goto out;
+	}
+#else
 	origfsuid = current->fsuid;
 	current->fsuid = 0;
+#endif
 
 	filp = filp_open(path, flags, creatmode);
 
+#ifdef FOUND_CURRENT_CRED
+	error = set_current_fsuid(origfsuid);
+	if (error) {
+		if (IS_ERR(filp))
+			filp = NULL;
+		goto out;
+	}
+#else
 	current->fsuid = origfsuid;
+#endif
 
 	if (IS_ERR(filp)) {
 		error = PTR_ERR(filp);

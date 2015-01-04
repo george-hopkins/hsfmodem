@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003-2004 Linuxant inc.
- * Copyright (c) 2001-2004 Conexant Systems, Inc.
+ * Copyright (c) 2003-2010 Linuxant inc.
+ * Copyright (c) 2001-2010 Conexant Systems, Inc.
  * 
  * 1.   Permitted use. Redistribution and use in source and binary forms,
  * without modification, are only permitted under the terms set forth herein.
@@ -51,19 +51,20 @@
  * decompile, or disassemble the portions of this software provided solely
  * in object form, nor attempt in any manner to obtain their source-code.
  * 
- * 6.   Redistribution. Permission to redistribute this software without
- * modification is granted, without prejudice to Linuxant's ability to obtain
- * reparation for any unauthorized distribution of previous versions of this
- * software released under prior LICENSE terms. Modification or redistribution
- * of this software under different terms requires explicit written approval
- * signed by an authorized Linuxant officer.
+ * 6.   Redistribution. Redistribution of this software is only permitted
+ * for exact copies (without modification) of versions explicitly marked
+ * and officially released by Linuxant with the word "free" in their name.
+ * Redistribution or disclosure of other versions, derivatives or license key
+ * information is expressly prohibited without explicit written approval signed
+ * by an authorized Linuxant officer.
  * 
  * 7.   Performance. V.92 modems are designed to be capable of receiving data at
  * up to 56Kbps with compatible phone line and server equipment, and transmitting
  * data at up to 31.2Kbps. V.90 modems are designed to be capable of receiving
  * data at up to 56 Kbps from a compatible service provider and transmitting data
  * at up to about 28.8 Kbps. Public networks currently limit download speeds to
- * about 53Kbps. Actual speeds vary and are often less than the maximum possible.
+ * about 53Kbps. The free version of the drivers is limited to 14.4Kbps.
+ * Actual speeds vary and are often less than the maximum possible.
  * 
  * 
  */
@@ -140,8 +141,7 @@
 #define BIG_ENDIAN_MACHINE 0
 #define V92 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Win9X SoftK56"
+#define FRAME_WORK_STR "Framework: Win9X SoftK56"
 
 #elif (FRAME_WORK==FWK_WIN9X_SOFTK56_V92)
 #define PROJECT     PRJ_HSF
@@ -162,8 +162,7 @@
 #define BIG_ENDIAN_MACHINE 0
 #define V92 1
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Win9X SoftK56"
+#define FRAME_WORK_STR "Framework: Win9X SoftK56"
  
 #elif ( FRAME_WORK == FWK_WIN9X_OCT )
 #define PROJECT     PRJ_HSF
@@ -183,8 +182,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
  
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Linux SoftK56"
+#define FRAME_WORK_STR "Framework: Linux SoftK56"
  
 
 #elif ( FRAME_WORK == FWK_LINUX_SOFTK56 )
@@ -238,8 +236,7 @@
 
 #include "build_modules.h"
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Linux SoftK56"
+#define FRAME_WORK_STR "Framework: Linux SoftK56"
 
 #elif ( FRAME_WORK == FWK_WDM_NILE_CTRL )
 
@@ -259,8 +256,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: WDM Nile"
+#define FRAME_WORK_STR "Framework: WDM Nile"
 
 #elif ( FRAME_WORK == FWK_WIN9X_NILE )
 
@@ -280,10 +276,9 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Win9X Nile (Offline)"
+#define FRAME_WORK_STR "Framework: Win9X Nile (Offline)"
 
-#elif ( FRAME_WORK == FWK_MAC_HCF )
+#elif (FRAME_WORK == FWK_MAC_HCF)
 
 #define PROJECT     PRJ_HCF
 #define PRJ_FLAVOUR	PRJFLVR_HCF
@@ -298,8 +293,7 @@
 #define DEBUG_LEVEL DEBUG_DEVELOP
 #define BIG_ENDIAN_MACHINE 1
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: MAC HCF"
+#define FRAME_WORK_STR "Framework: MAC HCF"
 
 #elif ( FRAME_WORK == FWK_GNRL_VXD )
 
@@ -316,8 +310,7 @@
 #define DEBUG_LEVEL DEBUG_DEVELOP
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: General Windows Ring0 (VxD)"
+#define FRAME_WORK_STR "Framework: General Windows Ring0 (VxD)"
 
 #elif ( FRAME_WORK == FWK_WIN9X_KERNEL_NILE )
 
@@ -337,8 +330,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Win9X Nile (Online)"
+#define FRAME_WORK_STR "Framework: Win9X Nile (Online)"
 
 #elif ( FRAME_WORK == FWK_GNRL_WIN_R3 )
 #define PROJECT     PRJ_GNRL_WIN_R3
@@ -359,8 +351,7 @@
 #define BIG_ENDIAN_MACHINE 0
 #define PORTABILITY 1
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: General Windows Ring3"
+#define FRAME_WORK_STR "Framework: General Windows Ring3"
  
  
 #elif ( FRAME_WORK == FWK_AMD64_WIN_R3 )
@@ -381,8 +372,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
  
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Amd 64 Windows Ring3"
+#define FRAME_WORK_STR "Framework: Amd 64 Windows Ring3"
 
  
 #elif ( FRAME_WORK == FWK_OCTOLOADER )
@@ -400,8 +390,7 @@
 #define DEV_TOOL    DT_NONE
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Octoloader"
+#define FRAME_WORK_STR "Framework: Octoloader"
 
 #elif ( FRAME_WORK == FWK_WDM_SOFTK56 )
 #define PROJECT     PRJ_HSF
@@ -441,8 +430,7 @@
 #define BIG_ENDIAN_MACHINE 0
 #define PORTABILITY 1
  
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: WDM SoftK56"
+#define FRAME_WORK_STR "Framework: WDM SoftK56"
 
 #elif ( FRAME_WORK == FWK_NT4_SOFTK56 )
 
@@ -463,8 +451,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: NT4 SoftK56"
+#define FRAME_WORK_STR "Framework: NT4 SoftK56"
 
 #elif ( FRAME_WORK == FWK_DLL_SOFTK56 )
 #define PROJECT     PRJ_HSF
@@ -484,8 +471,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Dll Offline SoftK56"
+#define FRAME_WORK_STR "Framework: Dll Offline SoftK56"
 
 #elif ( FRAME_WORK == FWK_DOS )
 
@@ -502,8 +488,7 @@
 #define DEBUG_LEVEL DEBUG_DEVELOP
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: DOS"
+#define FRAME_WORK_STR "Framework: DOS"
 
 #elif ( FRAME_WORK == FWK_DOSTEST )
 
@@ -520,8 +505,7 @@
 #define DEBUG_LEVEL DEBUG_DEVELOP
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: DOSTEST"
+#define FRAME_WORK_STR "Framework: DOSTEST"
 
 #elif ( FRAME_WORK == FWK_ORCA_CONSOLE )
 
@@ -542,8 +526,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Orca console"
+#define FRAME_WORK_STR "Framework: Orca console"
 
 #elif ( FRAME_WORK == FWK_GNRL_HSF_R3 )
  
@@ -564,8 +547,7 @@
 #define PRJ_FLAVOUR	PRJFLVR_HSF
 #define BIG_ENDIAN_MACHINE 0
  
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: General HSF Application"
+#define FRAME_WORK_STR "Framework: General HSF Application"
 
 #elif ( FRAME_WORK == FWK_VXWORKS_MIPS )
 
@@ -587,8 +569,7 @@
 
 #include "build_modules.h"
  
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: VxWorks Mips"
+#define FRAME_WORK_STR "Framework: VxWorks Mips"
 
 #elif ( FRAME_WORK == FWK_WDM_SOFTK56TOOLS )
 #define PROJECT     PRJ_HSF
@@ -608,8 +589,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
  
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: WDM SoftK56"
+#define FRAME_WORK_STR "Framework: WDM SoftK56"
  
 #elif ( FRAME_WORK == FWK_MACOSX )
 
@@ -639,8 +619,7 @@
 
 #include "octopus/include/build_modules.h"
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: MacOsX"
+#define FRAME_WORK_STR "Framework: MacOsX"
 
 #elif ( FRAME_WORK == FWK_MACOSX_CONSOLE )
 
@@ -661,8 +640,7 @@
 #define USE_PRAGMA_PACK	0
 #define PORTABILITY 1
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: MacOsX Console"
+#define FRAME_WORK_STR "Framework: MacOsX Console"
 
 #elif (FRAME_WORK==FWK_SANSIRO)
 #define PROJECT     PRJ_SANSIRO
@@ -682,8 +660,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: SanSiro"
+#define FRAME_WORK_STR "Framework: SanSiro"
 
 #elif ( FRAME_WORK == FWK_CORSICA_ADS )
  
@@ -706,8 +683,7 @@
  
 #include "octopus/include/build_modules.h"
  
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Corsica ADS"
+#define FRAME_WORK_STR "Framework: Corsica ADS"
 
 #elif ( FRAME_WORK == FWK_CORSICA_SDT )
  
@@ -730,8 +706,7 @@
  
 #include "octopus/include/build_modules.h"
  
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Corsica SDT"
+#define FRAME_WORK_STR "Framework: Corsica SDT"
  
 #elif (FRAME_WORK==FWK_DLL_SANSIRO)
 #define PROJECT     PRJ_SANSIRO
@@ -751,8 +726,7 @@
 #define USE_PRAGMA_PACK	0
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: Dll Offline SanSiro"
+#define FRAME_WORK_STR "Framework: Dll Offline SanSiro"
 
 #elif (FRAME_WORK==FWK_ISS_SANSIRO)
 #define PROJECT     PRJ_SANSIRO
@@ -772,8 +746,7 @@
 #define USE_PRAGMA_PACK	1
 #define BIG_ENDIAN_MACHINE 0
 
-#undef FRAME_WORK
-#define FRAME_WORK "Framework: ISS SanSiro"
+#define FRAME_WORK_STR "Framework: ISS SanSiro"
 
 #else
 
@@ -783,7 +756,7 @@
 
 #else /* No set defined: */
 
-#define FRAME_WORK "Custom Framework"
+#define FRAME_WORK_STR "Custom Framework"
 
 #endif
 
@@ -1008,5 +981,7 @@
 #define FRAMEWORK_HCF_CADMUS2 0
 #endif
 
+#undef FRAME_WORK
+#define FRAME_WORK FRAME_WORK_STR
 
 #endif /* __FRAMEWRK_H__ */

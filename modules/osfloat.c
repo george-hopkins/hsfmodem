@@ -26,7 +26,11 @@
 
 typedef struct {
 	unsigned long used;
+#ifdef FOUND_THREAD_XSTATE
+	union thread_xstate i387;
+#else
 	union i387_union i387;
+#endif
 	unsigned int cr0;
 } fpstate_t;
 

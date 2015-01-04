@@ -9,29 +9,78 @@
 # This script tries to unload all @CNXTTARGET@-related modules present in the system
 #
 
+module_full_path()
+{
+	module_path="`modprobe -l $1`"
+
+	if [ -z "${module_path}" ]; then
+		return
+	fi
+
+	case "${module_path}" in
+	/*)
+		echo "${module_path}"
+		return
+		;;
+	esac
+
+	# On Mandriva 2009.1 RC1, modprobe -l will return a relative path, not the full path
+	echo "/lib/modules/`uname -r`/${module_path}"
+}
+
 unload_mods()
 {
+	retcode=0
+	killsoundprocs=false
+
 	for mod in @CNXTMODS@; do
 		if [ "${mod}" = "dgcusbdcp" ]; then
 			killall dgcdcpd 2>/dev/null
 		fi
 
-		if [ ! -e "@CNXTETCDIR@/../.@CNXTTARGET@modem-hda-disable" ]; then
+		if ${unload_hda_bus}; then
 			if [ "${mod}" = "hsfhda" ]; then
 				# need to rmmod bus controller module first
 				if lsmod | grep -q "^snd_hda_intel "; then
 					rmmod snd_hda_intel 2>&1 | sed 's/^ERROR:/Warning:/' 1>&2
 					if [ ${PIPESTATUS[0]} -ne 0 ]; then
-						return 1
+						did_output=true
+						retcode="`expr ${retcode} + 1`"
+						killsoundprocs=true
 					fi
 				fi
 			fi
 		fi
 
+		if [ "@CNXTDRIVER@" = "hsf" -a "${mod}" = "snd_hda_codec_hsfmodem" ] && lsmod | grep -q "^snd_hda_codec_hsfmodem "; then
+			# We can't unload this module directly, we have to unblock it first
+			for dir in /sys/class/sound/card?/hwC?D? /sys/class/sound/hwC?D?; do
+				if [ -d "${dir}" ]; then
+					read vendor_id < "${dir}/vendor_id"
+					do_clear=false
+					case "${vendor_id}" in
+						0x14f12bfa) do_clear=true;;
+						0x14f12c06) do_clear=true;;
+						0x14f1????)
+							read mfg < "${dir}/mfg"
+							if [ "${mfg}" -ne "0x0" ]; then
+								do_clear=true
+							fi
+							;;
+					esac
+
+					if ${do_clear}; then
+						echo 1 > "${dir}/clear"
+					fi
+				fi
+			done
+		fi
+
 		if lsmod | grep -q "^${mod} "; then
 			rmmod ${mod} 2>&1 | sed 's/^ERROR:/Warning:/' 1>&2
 			if [ ${PIPESTATUS[0]} -ne 0 ]; then
-				return 1
+				did_output=true
+				retcode="`expr ${retcode} + 1`"
 			fi
 		fi
 
@@ -45,22 +94,46 @@ unload_mods()
 
 	done
 
-	if [ ! -e "@CNXTETCDIR@/../.@CNXTTARGET@modem-hda-disable" ]; then
+	if ${unload_hda_bus}; then
 		if lsmod | grep -q "^snd_hda_codec "; then
+			# Starting alsa-driver 1.0.19 which has a more modular design, we must unload all the snd_hda_codec_* modules before snd_hda_codec
+			codecs="`lsmod | grep '^snd_hda_codec_' | sed 's/ .*//'`"
+			if [ -n "${codecs}" ]; then
+				for codec in ${codecs}; do
+					rmmod ${codec} 2>&1 | sed 's/^ERROR:/Warning:/' 1>&2
+					if [ ${PIPESTATUS[0]} -ne 0 ]; then
+						did_output=true
+						retcode="`expr ${retcode} + 1`"
+						killsoundprocs=true
+					fi
+				done
+			fi
+
 			rmmod snd_hda_codec 2>&1 | sed 's/^ERROR:/Warning:/' 1>&2
 			if [ ${PIPESTATUS[0]} -ne 0 ]; then
-				return 1
+				did_output=true
+				retcode="`expr ${retcode} + 1`"
+				killsoundprocs=true
 			fi
 		fi
 	fi
 
-	exit 0
+	if [ ${retcode} -eq 0 ]; then
+		if ${did_output}; then
+			echo "Successfully stopped the @CNXTDRVDSC@ driver."
+		fi
+		exit 0
+	else
+		return ${retcode}
+	fi
 }
 
 kill_procs()
 {
 	method=$1
 	majors=$2
+
+	did_output=true
 
 	perl - << EOF
 	my @tokill;
@@ -95,15 +168,29 @@ EOF
 PATH=/usr/sbin:/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin
 export PATH
 
+if [ "@CNXTDRIVER@" = "hsf" -a ! -e "@CNXTETCDIR@/../.@CNXTTARGET@modem-hda-disable" ] && grep -q '^Vendor Id: 0x14f1' /proc/asound/card[0123456789]*/codec\#[0123456789]* >/dev/null 2>&1; then
+	codec_driver="`module_full_path snd-hda-codec-conexant`"
+	if [ -n "${codec_driver}" ] && ! grep -q cnxthwhda_remove "${codec_driver}"; then
+		unload_hda_bus=false
+	else
+		unload_hda_bus=true
+	fi
+else
+	unload_hda_bus=false
+fi
+
+did_output=false
+
 unload_mods
 
 # Normal unload failed, we will have to kill processes to unload
 maj="`awk '$2 ~ "ttyS@CNXTSERDEV@" { print $1 }' /proc/devices`"
 
-if [ "@CNXTDRIVER@" = "hsf" -a ! -e "@CNXTETCDIR@/../.@CNXTTARGET@modem-hda-disable" ] && grep -q '^Vendor Id: 0x14f1' /proc/asound/card[0123456789]*/codec\#[0123456789]* >/dev/null 2>&1; then
+if ${killsoundprocs}; then
 	# We are on a system with a Conexant HDA modem, we will have to kill
 	# processes which are using the sound as well
 	maj="${maj} `awk '$2 ~ "alsa" { print $1 }' /proc/devices`"
+	maj="${maj} `awk '$2 ~ "sound" { print $1 }' /proc/devices`"
 fi
 
 if [ -n "${maj}" -a "${maj}" != " " ]; then
@@ -122,6 +209,10 @@ if [ -n "${maj}" -a "${maj}" != " " ]; then
 	unload_mods
 	sleep 5
 	unload_mods
+fi
+
+if ${did_output}; then
+	echo 1>&2 "ERROR: Can't stop the @CNXTDRVDSC@ driver!"
 fi
 
 exit 1

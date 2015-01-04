@@ -29,13 +29,15 @@ If you have obtained the driver package in RPM format:
 
 1. install the rpm with "rpm -i hsfmodem-{version}.{arch}.rpm"
 
-2. if necessary, run "hsfconfig" to complete the installation, or
-to change your modem's configuration.
+2. if necessary, run "hsfconfig" to complete the installation,
+enter license information, or to change your modem's configuration.
 
-If you need to rebuild the binary RPM from source, you
+If you need to rebuild the generic RPM from source, you
 can get the TAR package and run: "rpmbuild -tb hsfmodem-{version}.tar.gz"
 (if rpmbuild is not found, you might have to install the rpm-build
-package or if you have an older RPM version, try "rpm --rebuild ...")
+package or if you have an older RPM version, try "rpm --rebuild ...").
+If you want a pre-compiled package for the currently running kernel,
+you can try "make rpmprecomp" in the top directory.
 
 
 METHOD B: DEBIAN PACKAGE (*.deb)
@@ -46,10 +48,12 @@ If you have obtained the driver package in DEBIAN format:
 if apt-get or some other tool hasn't already done it for you.
 
 2. if necessary, run "hsfconfig" to complete the installation,
-or to change your modem's configuration.
+enter license information, or to change your modem's configuration.
 
-If you need to rebuild the Debian package from source, you can get
-the TAR package, and from the top directory run: "make debdist"
+If you need to rebuild the Debian generic package from source, you can
+get the TAR package, and from the top directory run: "make debdist".
+A pre-compiled DEB package for the currently running kernel can be
+built using "make debprecomp" instead.
 
 
 METHOD C: TAR PACKAGE (*.tar.gz)
@@ -63,6 +67,9 @@ If you have obtained the driver package in tar format:
 3. run "make install" from the top of the package directory.
 
 4. run "hsfconfig" to complete the installation and configure your modem.
+
+Do not delete or move the source tree from your system after these steps,
+it will be required to uninstall and patch the driver.
 
 (Alternatively to this whole procedure you may generate RPMS from the tar
 package using rpmbuild -ta hsfmodem-{version}.tar.gz")
@@ -85,6 +92,17 @@ that they are adequate for your system.
 The "hsfconfig" command can be used to change certain modem configuration
 options or recompile (generic packages only) the kernel modules after
 installation.  Run "hsfconfig --help" for usage information.
+
+
+LICENSE KEYS / REGISTRATION
+
+To enable your modem's full functionality (high-speed 56k data and FAX),
+a license registration key must be obtained from Linuxant and entered with
+"hsfconfig --license".
+
+Without a proper license key, the modem can only operate in FREE mode,
+limited to a maximum speed of 14.4Kbps (V.32bis) and the FAX
+functionality will not be available.
 
 
 CHANGING REGIONAL SETTINGS
@@ -118,7 +136,7 @@ system, simply run the "hsfconfig --uninstall" command in a root shell.
 
 MORE INFORMATION AND HELP
 
-If you require assistance or need more information, go to:
+If you require license keys, assistance or need more information, go to:
               http://www.linuxant.com/drivers
 
 Conexant Systems neither distributes nor maintains this package.

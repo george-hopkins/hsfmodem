@@ -22,7 +22,7 @@ endif
 NVMDIRS_HCFPCI= v90 v90lan v92 v92smart riptide
 NVMDIRS_HCFUSB= cadmus2
 NVMDIRS_HCFUSB_BIGENDIAN= cadmus2-bigendian
-NVMDIRS_HSF= pcibasic2 pcibasic2smart pcibasic2hsfi pcibasic3 mc97 mc97ali mc97ati mc97ich mc97sis mc97via cadmus2 cadmus2smart hda
+NVMDIRS_HSF= pcibasic2 pcibasic2smart pcibasic2hsfi pcibasic2bry pcibasic3 mc97 mc97ali mc97ati mc97ich mc97sis mc97via cadmus2 cadmus2smart hda
 
 ifeq ($(IMPORTED_TARGET),TARGET_HCF_PCI_LINUX)
 NVMDIRS= $(NVMDIRS_HCFPCI)
@@ -157,6 +157,12 @@ $(NVMCVTDIR)/$(CNXTTARGET)%: $(NVMINFDIR)/$(CNXTTARGET)%.inf
 	$(mkctycodelist)
 
 $(NVMCVTDIR)/$(CNXTTARGET)pcibasic2hsfi: $(NVMINFDIR)/$(CNXTTARGET)pcibasic2hsfi.inf $(NVMINFDIR)/$(CNXTTARGET).cty
+	$(inftonvm)
+	rm -rf $@/Region
+	ln -sf ../$(CNXTTARGET)$(CTYLNK)/Region $@/.
+	$(mkctycodelist)
+
+$(NVMCVTDIR)/$(CNXTTARGET)pcibasic2bry: $(NVMINFDIR)/$(CNXTTARGET)pcibasic2bry.inf $(NVMINFDIR)/$(CNXTTARGET).cty
 	$(inftonvm)
 	rm -rf $@/Region
 	ln -sf ../$(CNXTTARGET)$(CTYLNK)/Region $@/.

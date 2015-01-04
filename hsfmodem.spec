@@ -1,10 +1,14 @@
 #
-# Copyright (c) 2003-2008 Linuxant inc.
+# Copyright (c) 2003-2010 Linuxant inc.
 #
 # NOTE: The use and distribution of this software is governed by the terms in
 # the file LICENSE, which is included in the package. You must read this and
 # agree to these terms before using or distributing this software.
 #
+
+%if "%{_target_distro}" == "custom"
+%define _target_kernel %(eval uname -r)
+%endif
 
 # set _target_kernel to generic if it wasn't defined on the command-line
 %if %{expand:%{?_target_kernel:0}%{!?_target_kernel:1}}
@@ -15,12 +19,16 @@
 %define _build_doc 0
 %endif
 
+%if %{expand:%{?_requires:0}%{!?_requires:1}}
+%define _requires none
+%endif
+
 %if "%{_target_kernel}" == "generic"
-%define ver      7.68.00.09x86_64oem
+%define ver      7.80.02.06x86_64full
 %define rel      1
 %define automrecomp 1
 %else
-%define ver      7.68.00.09x86_64oem_k%(eval echo %{_target_kernel} | sed 's/-/_/g')
+%define ver      7.80.02.06x86_64full_k%(eval echo %{_target_kernel} | sed 's/-/_/g')
 %define rel      1%{_target_distro}
 %define automrecomp 0
 %endif
@@ -61,14 +69,16 @@ ExclusiveArch: athlon i686 i586 i486 i386
 %endif
 %endif
 %else
+%if "%{_target_distro}" != "custom"
 ExclusiveArch: %{_target_cpu}
+%endif
 %endif
 Version:   %ver
 Release:   %rel
 Vendor:	   Linuxant
-License: Copyright (c) 2003-2008 Linuxant inc. All rights reserved.
+License: Copyright (c) 2003-2010 Linuxant inc. All rights reserved.
 Group:     System Environment/Kernel
-Source:    %{cnxttarget}modem-7.68.00.09x86_64oem.tar.gz
+Source:    %{cnxttarget}modem-7.80.02.06x86_64full.tar.gz
 %if %{_build_doc}
 Source2:   100498D_RM_HxF_Released.pdf
 %endif
@@ -86,6 +96,9 @@ Requires:  perl
 %if "%{cnxtdriver}" == "hsf" || "%{cnxtdriver}" == "hcf"
 Conflicts: %{cnxtdriver}linmodem
 %endif
+%if "%{_requires}" != "none"
+Requires: %{_requires}
+%endif
 Autoreq:   0
 
 %if %{_build_doc}
@@ -99,8 +112,8 @@ ExclusiveArch: noarch
 %description
 %{cnxtdrvdsc}
 
-Copyright (c) 2003-2004 Linuxant inc.
-Copyright (c) 2001-2004 Conexant Systems, Inc.
+Copyright (c) 2003-2010 Linuxant inc.
+Copyright (c) 2001-2010 Conexant Systems, Inc.
 
 1.   Permitted use. Redistribution and use in source and binary forms,
 without modification, are only permitted under the terms set forth herein.
@@ -151,19 +164,20 @@ the Software.
 decompile, or disassemble the portions of this software provided solely
 in object form, nor attempt in any manner to obtain their source-code.
 
-6.   Redistribution. Permission to redistribute this software without
-modification is granted, without prejudice to Linuxant's ability to obtain
-reparation for any unauthorized distribution of previous versions of this
-software released under prior LICENSE terms. Modification or redistribution
-of this software under different terms requires explicit written approval
-signed by an authorized Linuxant officer.
+6.   Redistribution. Redistribution of this software is only permitted
+for exact copies (without modification) of versions explicitly marked
+and officially released by Linuxant with the word "free" in their name.
+Redistribution or disclosure of other versions, derivatives or license key
+information is expressly prohibited without explicit written approval signed
+by an authorized Linuxant officer.
 
 7.   Performance. V.92 modems are designed to be capable of receiving data at
 up to 56Kbps with compatible phone line and server equipment, and transmitting
 data at up to 31.2Kbps. V.90 modems are designed to be capable of receiving
 data at up to 56 Kbps from a compatible service provider and transmitting data
 at up to about 28.8 Kbps. Public networks currently limit download speeds to
-about 53Kbps. Actual speeds vary and are often less than the maximum possible.
+about 53Kbps. The free version of the drivers is limited to 14.4Kbps.
+Actual speeds vary and are often less than the maximum possible.
 
 
 %if %{_build_doc}
@@ -172,7 +186,7 @@ This package contains the documentation for the %{cnxtdrvdsc}.
 %endif
 
 %prep
-%setup -q -n %{cnxttarget}modem-7.68.00.09x86_64oem
+%setup -q -n %{cnxttarget}modem-7.80.02.06x86_64full
 
 %build
 
@@ -187,6 +201,7 @@ make --quiet --no-print-directory all
 %else
 
 MODS_DIR=binaries/linux-%{_target_kernel}
+UNAMER=`uname -r`
 
 # Figure out if we should add -SMP at the end of CNXT_MODS_DIR. We should only add it if the
 # kernel was compiled with SMP and the word SMP doesn't appear in the kernel version. This
@@ -203,6 +218,9 @@ esac
 case "%{_target_distro}" in
 rh | fdr | fs)
 	CONFIGFILE="%{_distro_kernels}/%{_target_distro}/linux-%{_target_kernel}.%{_target_cpu}/.config"
+	;;
+custom)
+	CONFIGFILE="/lib/modules/${UNAMER}/build/.config"
 	;;
 *)
 	CONFIGFILE="%{_distro_kernels}/%{_target_distro}/linux-%{_target_kernel}/.config"
@@ -306,6 +324,14 @@ fi
 ) || exit $?
 %endif
 
+%if "%{_target_distro}" == "custom"
+(
+	if cd modules; then
+		make --quiet --no-print-directory CNXT_KERNELSRC=/lib/modules/${UNAMER}/build DISTRO_CFLAGS="" CNXT_MODS_DIR="${MODS_DIR}" clean all modules_install || exit $?
+	fi
+) || exit $?
+%endif
+
 %endif
 
 %install
@@ -319,6 +345,10 @@ if [ -d $RPM_BUILD_ROOT%{cnxtetcdir}/nvm ]; then
 fi
 
 echo "RPM" > "$RPM_BUILD_ROOT/%{cnxtetcdir}/package"
+
+%if "%{_target_kernel}" != "generic"
+find "$RPM_BUILD_ROOT/%{cnxtlibdir}" \( -name '*.[chO]' -o -name 'Makefile' -o -name '*.mak' -o -name '*.sh' \) -exec rm -f {} \;
+%endif
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -348,6 +378,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %defattr(0444, root, root, 755)
 %dir %{cnxtetcdir}
+%dir %{cnxtetcdir}/log
 %if "%{cnxtdriver}" != "dgc"
 %dir %{cnxtetcdir}/nvm
 %{cnxtetcdir}/nvm.tar.gz
@@ -445,6 +476,84 @@ fi
 
 # This must be last since the file CHANGES is automatically appended
 %changelog
+
+* Sun May 09 2010 -
+	- Released hsfmodem-7.80.02.06.
+
+* Sun May 09 2010 -
+	- Improved compatibility with newer kernels and distributions.
+
+* Wed Oct 21 2009 -
+	- Released hsfmodem-7.80.02.05.
+
+* Wed Oct 21 2009 -
+	- Improved compatibility with newer kernels and distributions.
+
+* Thu Apr 23 2009 -
+	- Released hsfmodem-7.80.02.04.
+
+* Thu Apr 23 2009 -
+	- Improved compatibility with newer kernels and distributions.
+
+* Fri Feb 20 2009 -
+	- Released hsfmodem-7.80.02.03.
+
+* Fri Feb 20 2009 -
+	- Added buildlogs to dumpdiag.
+	- Added modular HDA support and distinct snd-hda-codec-hsfmodem module.
+	- Added message in hsfstop to indicate successful operation.
+	- Improved uninstallation.
+
+* Mon Jan 26 2009 -
+	- Released hsfmodem-7.80.02.02.
+
+* Mon Jan 26 2009 -
+	- Improved compatibility with newer kernels and distributions.
+	- Added support for alsa-driver 1.0.19.
+	- Fixed spurious timer issue affecting HDA, USB and Yukon modems.
+
+* Thu Dec 18 2008 -
+	- Released hsfmodem-7.80.02.01.
+
+* Mon Dec 15 2008 -
+	- Improved compatibility with newer kernels and distributions.
+	- Merged latest Conexant modem code. (7.80.02)
+
+* Wed Oct 01 2008 -
+	- Released hsfmodem-7.68.00.14.
+
+* Wed Oct 01 2008 -
+	- Improved compatibility with newer kernels and distributions.
+	- Added rpmprecomp/debprecomp targets to easily generate pre-compiled
+	RPM/DEB pre-compiled packages for the currently running kernel.
+	- Added proper INF configuration for Bryce (14f1:2f40) modems.
+
+* Tue Sep 09 2008 -
+	- Released hsfmodem-7.68.00.13.
+
+* Mon Sep 08 2008 -
+	- Improved compatibility with newer kernels and distributions.
+	- Fixed hsfstop script.
+
+* Fri Jul 18 2008 -
+	- Released hsfmodem-7.68.00.12.
+
+* Wed Jul 16 2008 -
+	- Improved compatibility with newer kernels and distributions.
+	- Added support for newer Rainier modems (OEM).
+
+* Fri Jun 20 2008 -
+	- Released hsfmodem-7.68.00.11.
+
+* Fri Jun 20 2008 -
+	- Improved compatibility with newer kernels and distributions.
+
+* Thu May 08 2008 -
+	- Released hsfmodem-7.68.00.10.
+
+* Thu May 08 2008 -
+	- Improved compatibility with newer kernels and distributions.
+	- Silenced "returning OSEVENT_WAIT_TIMEOUT" messages.
 
 * Mon Mar 24 2008 -
 	- Released hsfmodem-7.68.00.09.

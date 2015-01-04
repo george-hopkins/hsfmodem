@@ -137,7 +137,7 @@ struct cnxt_serial_inst {
     OSSCHED intr_tqueue;
 
     struct uart_port *uart_port;
-    struct uart_info *uart_info;
+    uart_info_t *uart_info;
 
 #ifdef CONFIG_PROC_FS
     struct proc_dir_entry *proc_unit_dir;
@@ -234,7 +234,7 @@ cnxt_rx_ready(struct cnxt_serial_inst *inst)
 static inline void
 cnxt_rx_chars(struct cnxt_serial_inst *inst)
 {
-    struct tty_struct *tty = inst->uart_info->tty;
+    struct tty_struct *tty = UART_INFO_TO_TTY(inst->uart_info);
     int max_count = sizeof(inst->readbuf);
     unsigned char flag;
 
@@ -324,10 +324,13 @@ static inline void
 cnxt_tx_chars(struct cnxt_serial_inst *inst)
 {
     struct circ_buf *xmit;
-    struct uart_info *info = inst->uart_info;
+    uart_info_t *info = inst->uart_info;
     struct uart_port *port;
     spinlock_t *lock;
     unsigned long flags;
+    struct tty_struct *tty;
+
+    tty = UART_INFO_TO_TTY(info);
    
     port = inst->uart_port;
     xmit = &info->xmit;
@@ -347,8 +350,8 @@ cnxt_tx_chars(struct cnxt_serial_inst *inst)
 
     spin_lock_irqsave(lock, flags);
     if (uart_circ_empty(xmit)
-	    || info->tty->stopped
-	    || info->tty->hw_stopped) {
+	    || tty->stopped
+	    || tty->hw_stopped) {
 #ifdef FOUND_TTY_START_STOP
 	cnxt_stop_tx(port, 0);
 #else
@@ -622,7 +625,11 @@ cnxt_event_handler(struct cnxt_serial_inst *inst, UINT32 dwEvtMask)
 #endif
 			mctrl_flags & TIOCM_CTS);
 
+#ifdef FOUND_NO_STRUCT_UART_INFO
+	    wake_up_interruptible(&inst->uart_info->port.delta_msr_wait);
+#else
 	    wake_up_interruptible(&inst->uart_info->delta_msr_wait);
+#endif
 	}
     }
 
@@ -667,7 +674,11 @@ cnxt_startup(struct uart_port *port
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
     inst->uart_info = info;
 #else
+#ifdef FOUND_NO_STRUCT_UART_INFO
+    inst->uart_info = port->state;
+#else
     inst->uart_info = port->info;
+#endif
 #endif
 
     inst->rxenabled = 1;
@@ -1366,7 +1377,7 @@ cnxt_serial_init(void)
 	}
 
 #ifdef CONFIG_PROC_FS
-	cnxt_serial_proc_dir = proc_mkdir(CNXTTARGET, proc_root_driver);
+	cnxt_serial_proc_dir = proc_mkdir(PROC_PREFIX CNXTTARGET, proc_root_driver);
 
 	if (cnxt_serial_proc_dir) {
 		cnxt_serial_flush_nvm = create_proc_entry("flush_nvm", 0, cnxt_serial_proc_dir);
@@ -1381,7 +1392,7 @@ cnxt_serial_init(void)
 		if(cnxt_serial_proc_dir) {
 			if (cnxt_serial_flush_nvm)
 				remove_proc_entry("flush_nvm", cnxt_serial_proc_dir);
-			remove_proc_entry(CNXTTARGET, proc_root_driver);
+			remove_proc_entry(PROC_PREFIX CNXTTARGET, proc_root_driver);
 		}
 #endif
 		uart_exit();
@@ -1413,7 +1424,7 @@ cnxt_serial_exit(void)
 	if(cnxt_serial_proc_dir) {
 		if (cnxt_serial_flush_nvm)
 			remove_proc_entry("flush_nvm", cnxt_serial_proc_dir);
-		remove_proc_entry(CNXTTARGET, proc_root_driver);
+		remove_proc_entry(PROC_PREFIX CNXTTARGET, proc_root_driver);
 	}
 #endif
 

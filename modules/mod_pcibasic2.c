@@ -121,7 +121,7 @@ static struct pci_device_id cnxthwpci_tbl[] =
         {0x14F1, 0x2705, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic2smart")},
         {0x14F1, 0x2F20, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic2smart")}, /* Riesling */
         {0x14F1, 0x2F30, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic2hsfi")}, /* Wellington */
-        {0x14F1, 0x2F40, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic2smart")}, /* Bryce */
+        {0x14F1, 0x2F40, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic2bry")}, /* Bryce */
         {0x14F1, 0x2F50, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic2hsfi")}, /* Lassen */
         {0x14F1, 0x201A, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic2")},
         {0x14F1, 0x201B, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic2")},

@@ -92,7 +92,18 @@ static int errno;
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/kdev_t.h>
+
+#ifdef FOUND_LINUX_BYTEORDER_SWAB
 #include <linux/byteorder/swab.h>
+#else
+#include <linux/swab.h>
+#endif
+
+#include <linux/proc_fs.h>
+
+#ifdef FOUND_LINUX_SEMAPHORE
+#include <linux/semaphore.h>
+#endif
 
 #ifdef FOUND_MODULE_PARAM
 #include <linux/moduleparam.h>
@@ -549,10 +560,14 @@ static inline int OsContextAllowsSleeping(void)
 }
 #endif
 
+#ifdef FOUND_DEV_NAME
+#define PCI_SLOT_NAME(x)  dev_name(&(x)->dev)
+#else
 #ifdef FOUND_PCI_DEV_SLOT_NAME
 #define PCI_SLOT_NAME(x)  (x)->slot_name
 #else
 #define PCI_SLOT_NAME(x)  (x)->dev.bus_id
+#endif
 #endif
 
 #ifdef FOUND_CLASS_SIMPLE
@@ -561,13 +576,26 @@ static inline int OsContextAllowsSleeping(void)
 #define CLASS_DEVICE_DESTROY(class, dev) class_simple_device_remove(dev)
 #define CLASS_CREATE(owner, name) class_simple_create(owner, name)
 #else
+#ifdef FOUND_CLASS_DEVICE
 #ifdef FOUND_CLASS_DEVICE_PARENT
 #define CLASS_DEVICE_CREATE(class, dev, device, fmt, rest...) class_device_create(class, NULL, dev, device, fmt, ## rest)
 #else
 #define CLASS_DEVICE_CREATE(class, dev, device, fmt, rest...) class_device_create(class, dev, device, fmt, ## rest)
 #endif
-#define CLASS_DESTROY(class) class_destroy(class)
 #define CLASS_DEVICE_DESTROY(class, dev) class_device_destroy(class, dev)
+#else
+#ifdef FOUND_DEVICE_CREATE_DRVDATA
+#define CLASS_DEVICE_CREATE(class, dev, device, fmt, rest...) device_create_drvdata(class, device, dev, NULL, fmt, ## rest)
+#else
+#ifdef FOUND_DEVICE_CREATE_WITH_DRVDATA
+#define CLASS_DEVICE_CREATE(class, dev, device, fmt, rest...) device_create(class, device, dev, NULL, fmt, ## rest)
+#else
+#define CLASS_DEVICE_CREATE(class, dev, device, fmt, rest...) device_create(class, device, dev, fmt, ## rest)
+#endif
+#endif
+#define CLASS_DEVICE_DESTROY(class, dev) device_destroy(class, dev)
+#endif
+#define CLASS_DESTROY(class) class_destroy(class)
 #define CLASS_CREATE(owner, name) class_create(owner, name)
 #endif
 
@@ -617,6 +645,43 @@ typedef u32 pm_message_t;
 #define CNXT_IRQ_SHARED IRQF_SHARED
 #else
 #define CNXT_IRQ_SHARED SA_SHIRQ
+#endif
+
+#ifndef proc_root_driver
+#define proc_root_driver NULL
+#define PROC_PREFIX "driver/"
+#else
+#define PROC_PREFIX ""
+#endif
+
+#ifndef FOUND_KILL_PROC
+static inline struct pid *find_pid(int nr)
+{
+	return find_pid_ns(nr, &init_pid_ns);
+}
+
+static inline int
+kill_proc(pid_t pid, int sig, int priv)
+{
+	int ret;
+
+	rcu_read_lock();
+	ret = kill_pid(find_pid(pid), sig, priv);
+	rcu_read_unlock();
+	return ret;
+}
+#endif
+
+#ifdef FOUND_STRUCT_TTY_PORT
+#define UART_INFO_TO_TTY(ui) (ui->port.tty)
+#else
+#define UART_INFO_TO_TTY(ui) (ui->tty)
+#endif
+
+#ifdef FOUND_NO_STRUCT_UART_INFO
+typedef struct uart_state uart_info_t;
+#else
+typedef struct uart_info uart_info_t;
 #endif
 
 #endif /* __OSCOMPAT_H */

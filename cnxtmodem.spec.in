@@ -1,10 +1,14 @@
 #
-# Copyright (c) 2003-2008 Linuxant inc.
+# Copyright (c) 2003-2010 Linuxant inc.
 #
 # NOTE: The use and distribution of this software is governed by the terms in
 # the file LICENSE, which is included in the package. You must read this and
 # agree to these terms before using or distributing this software.
 #
+
+%if "%{_target_distro}" == "custom"
+%define _target_kernel %(eval uname -r)
+%endif
 
 # set _target_kernel to generic if it wasn't defined on the command-line
 %if %{expand:%{?_target_kernel:0}%{!?_target_kernel:1}}
@@ -13,6 +17,10 @@
 
 %if %{expand:%{?_build_doc:0}%{!?_build_doc:1}}
 %define _build_doc 0
+%endif
+
+%if %{expand:%{?_requires:0}%{!?_requires:1}}
+%define _requires none
 %endif
 
 %if "%{_target_kernel}" == "generic"
@@ -61,12 +69,14 @@ ExclusiveArch: athlon i686 i586 i486 i386
 %endif
 %endif
 %else
+%if "%{_target_distro}" != "custom"
 ExclusiveArch: %{_target_cpu}
+%endif
 %endif
 Version:   %ver
 Release:   %rel
 Vendor:	   Linuxant
-License: Copyright (c) 2003-2008 Linuxant inc. All rights reserved.
+License: Copyright (c) 2003-2010 Linuxant inc. All rights reserved.
 Group:     System Environment/Kernel
 Source:    %{cnxttarget}modem-@CNXTLINUXVERSION@.tar.gz
 %if %{_build_doc}
@@ -85,6 +95,9 @@ Requires:  perl
 %endif
 %if "%{cnxtdriver}" == "hsf" || "%{cnxtdriver}" == "hcf"
 Conflicts: %{cnxtdriver}linmodem
+%endif
+%if "%{_requires}" != "none"
+Requires: %{_requires}
 %endif
 Autoreq:   0
 
@@ -122,6 +135,7 @@ make --quiet --no-print-directory all
 %else
 
 MODS_DIR=binaries/linux-%{_target_kernel}
+UNAMER=`uname -r`
 
 # Figure out if we should add -SMP at the end of CNXT_MODS_DIR. We should only add it if the
 # kernel was compiled with SMP and the word SMP doesn't appear in the kernel version. This
@@ -138,6 +152,9 @@ esac
 case "%{_target_distro}" in
 rh | fdr | fs)
 	CONFIGFILE="%{_distro_kernels}/%{_target_distro}/linux-%{_target_kernel}.%{_target_cpu}/.config"
+	;;
+custom)
+	CONFIGFILE="/lib/modules/${UNAMER}/build/.config"
 	;;
 *)
 	CONFIGFILE="%{_distro_kernels}/%{_target_distro}/linux-%{_target_kernel}/.config"
@@ -241,6 +258,14 @@ fi
 ) || exit $?
 %endif
 
+%if "%{_target_distro}" == "custom"
+(
+	if cd modules; then
+		make --quiet --no-print-directory CNXT_KERNELSRC=/lib/modules/${UNAMER}/build DISTRO_CFLAGS="" CNXT_MODS_DIR="${MODS_DIR}" clean all modules_install || exit $?
+	fi
+) || exit $?
+%endif
+
 %endif
 
 %install
@@ -254,6 +279,10 @@ if [ -d $RPM_BUILD_ROOT%{cnxtetcdir}/nvm ]; then
 fi
 
 echo "RPM" > "$RPM_BUILD_ROOT/%{cnxtetcdir}/package"
+
+%if "%{_target_kernel}" != "generic"
+find "$RPM_BUILD_ROOT/%{cnxtlibdir}" \( -name '*.[chO]' -o -name 'Makefile' -o -name '*.mak' -o -name '*.sh' \) -exec rm -f {} \;
+%endif
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -283,6 +312,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %defattr(0444, root, root, 755)
 %dir %{cnxtetcdir}
+%dir %{cnxtetcdir}/log
 %if "%{cnxtdriver}" != "dgc"
 %dir %{cnxtetcdir}/nvm
 %{cnxtetcdir}/nvm.tar.gz

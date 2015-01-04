@@ -61,7 +61,13 @@ $dcpdev="/dev/@CNXTTARGET@dcp$CNXTDCPDEVICE";
 
 sleep(1); # give udev time to create DCP device
 
-sysopen DCPDEV, "$dcpdev", (O_RDONLY | O_NDELAY | O_NONBLOCK) or die "$0: can't open $dcpdev";
+$retry=10;
+while(!sysopen DCPDEV, "$dcpdev", (O_RDONLY | O_NDELAY | O_NONBLOCK)) {
+	if(--$retry<=0){
+		die "$0: can't open $dcpdev";
+	}
+	sleep(1); # give udev more time to create DCP device
+}
 
 $CNXTDCPRATE=$ENV{'CNXTDCPRATE'};
 if ($CNXTDCPRATE eq "") {

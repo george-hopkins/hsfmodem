@@ -5,7 +5,8 @@ are available at http://www.linuxant.com on the web.
 The drivers should work on most current Linux distributions, with
 the 2.4 or 2.6 kernels. A Pentium processor with the MMX enhancements
 is required. Some systems may require kernel recompilation with
-special ACPI patches.
+special ACPI patches, especially with 2.4 kernels. Using a 2.6 kernel
+is recommended.
 
 The following modem devices are recognized by the driver:
 
@@ -55,10 +56,14 @@ HSF/HSFi (Standard and SmartDAA)
 
 HDA (High Definition Audio) Modems
 
-	only under 2.6.16 or newer kernels
+	Only under 2.6.16 or newer kernels
 
 	HDA VENDOR ID 14F12BFA
 	HDA VENDOR ID 14F12C06
+
+	We recommend the installation of alsa-driver-linuxant available
+	at http://www.linuxant.com/alsa-driver before installing this
+	driver if you have a HDA modem.
 
 INTEL AC-Link Controller (ICH)
 

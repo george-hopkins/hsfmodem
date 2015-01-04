@@ -30,12 +30,17 @@ ifneq ($(TARGET_KERNEL),)
 	*[Ss][Mm][Pp]*) SMPSUFFIX="" ;; \
 	*) SMPSUFFIX="-SMP" ;; \
 	esac ; \
-	if [ -e "$(DISTROKERNHDRSDIR)/$(TARGET_DISTRO)/linux-$(TARGET_KERNEL)/.config" ] && grep -q '^CONFIG_SMP=y$$' "$(DISTROKERNHDRSDIR)/$(TARGET_DISTRO)/linux-$(TARGET_KERNEL)/.config"; then \
+	if [ "$(TARGET_DISTRO)" = "custom" ]; then \
+		KERNELSRC="/lib/modules/`uname -r`/build"; \
+	else \
+		KERNELSRC="$(DISTROKERNHDRSDIR)/$(TARGET_DISTRO)/linux-$(TARGET_KERNEL)"; \
+	fi; \
+	if [ -e "$${KERNELSRC}/.config" ] && grep -q '^CONFIG_SMP=y$$' "$${KERNELSRC}/.config"; then \
 		MODS_DIR="$${MODS_DIR}$${SMPSUFFIX}" ; \
 	fi; \
 	( \
 		if cd modules; then \
-			make --quiet --no-print-directory CNXT_KERNELSRC=$(DISTROKERNHDRSDIR)/$(TARGET_DISTRO)/linux-$(TARGET_KERNEL) CNXT_MODS_DIR=$${MODS_DIR} clean all modules_install || exit $$?; \
+			make --quiet --no-print-directory CNXT_KERNELSRC=$${KERNELSRC} CNXT_MODS_DIR=$${MODS_DIR} clean all modules_install || exit $$?; \
 		fi \
 	) || exit $$?
 endif
@@ -44,7 +49,7 @@ endif
 ifneq ($(TARGET_KERNEL),)
 	@PWD="`pwd`"; \
 	rm -fr "$${PWD}/debian/tmp/@CNXTLIBDIR@/modules/include" "$${PWD}/debian/tmp/@CNXTLIBDIR@/modules/imported"; \
-	find "$${PWD}/debian/tmp/@CNXTLIBDIR@/modules" -maxdepth 2 ! -name "COPYING" -type f -exec rm -f {} \;
+	find "$${PWD}/debian/tmp/@CNXTLIBDIR@/modules" -maxdepth 3 ! -name "COPYING" ! -name "*o" -type f -exec rm -f {} \;
 endif
 	rm -rf debian/@CNXTTARGET@modem-doc
 ifneq ($(CNXTDRIVER),dgc)
@@ -52,13 +57,15 @@ ifneq ($(CNXTDRIVER),dgc)
 endif
 	# remove duplicate LICENSE
 	rm -f debian/tmp/usr/lib/@CNXTTARGET@modem/LICENSE
-# Must have debmake installed for this to work. Otherwise please copy
-# /usr/bin/debstd into the debian directory and change debstd to debian/debstd
 ifeq ($(CNXTDRIVER),dgc)
-	debstd BUGS CHANGES INSTALL LICENSE README
+	dh_installdocs BUGS CHANGES INSTALL LICENSE README
 else
-	debstd BUGS CHANGES CREDITS FAQ INSTALL LICENSE README 100498D_RM_HxF_Released.pdf
+	dh_installdocs BUGS CHANGES CREDITS FAQ INSTALL LICENSE README # 100498D_RM_HxF_Released.pdf
 endif
+	dh_installchangelogs
+	dh_installdeb
+	dh_compress
+	dh_md5sums
 	dpkg-gencontrol -p@CNXTTARGET@modem -isp
 	chown -R root.root debian/tmp
 #	chmod -R go=rX debian/tmp

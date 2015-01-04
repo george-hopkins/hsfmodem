@@ -304,13 +304,17 @@ BOOL OsAtomicCompareAndSwapEx (PVOID oldValue, PVOID newValue, PVOID* address, I
 #if defined(__HAVE_ARCH_CMPXCHG) && !defined(__powerpc__)
     switch(size) {
 	case sizeof(u8):
-		return (cmpxchg(((u8*)address), oldValue, newValue) == (u8)(ULONG_PTR)oldValue);
+		return (cmpxchg(((u8*)address), (ULONG_PTR)oldValue, (ULONG_PTR)newValue) == (u8)(ULONG_PTR)oldValue);
 	case sizeof(u16):
-		return (cmpxchg(((u16*)address), oldValue, newValue) == (u16)(ULONG_PTR)oldValue);
+		return (cmpxchg(((u16*)address), (ULONG_PTR)oldValue, (ULONG_PTR)newValue) == (u16)(ULONG_PTR)oldValue);
 	case sizeof(u32):
-		return (cmpxchg(((u32*)address), oldValue, newValue) == (u32)(ULONG_PTR)oldValue);
+		return (cmpxchg(((u32*)address), (ULONG_PTR)oldValue, (ULONG_PTR)newValue) == (u32)(ULONG_PTR)oldValue);
 	case sizeof(u64):
-		return (cmpxchg(((u64*)address), oldValue, newValue) == (u64)(ULONG_PTR)oldValue);
+#ifdef cmpxchg64
+		return (cmpxchg64(((u64*)address), (ULONG_PTR)oldValue, (ULONG_PTR)newValue) == (u64)(ULONG_PTR)oldValue);
+#else
+		return (cmpxchg(((u64*)address), (ULONG_PTR)oldValue, (ULONG_PTR)newValue) == (u64)(ULONG_PTR)oldValue);
+#endif
 	default:
 		printk(KERN_ERR"%s: size=%d not supported\n", __FUNCTION__, size);
 		return TRUE;
@@ -454,7 +458,11 @@ static int cnxt_thread(OSTHRD *osthrd)
 
 #if defined(TARGET_HSF_LINUX) && defined(CONFIG_SMP)
 	/* temporary workaround */
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0) )
+	current->cpus_allowed = 1 << cpu_logical_map(0);
+#else
 	current->cpus_allowed = cpumask_of_cpu(0);
+#endif
 #endif
 
 	lock_kernel();
@@ -810,7 +818,7 @@ OsForkWait(char *program_path, char *argv[], char *envp[])
    
 	//OsDebugPrintf("%s: %s\n", __FUNCTION__, program_path);
 
-#if defined(__x86_64__) || defined(FOUND_KERNEL_EXECVE)
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) )
 	err = call_usermodehelper(program_path, argv, envp, 1);
 #else
 	{
@@ -1571,10 +1579,12 @@ OSEVENT_WAIT_RESULT OsEventWaitTime(HOSEVENT hEvent, UINT32 timeout)
 	remove_wait_queue(&pEvent->wq, &wait);
 	//OsDebugPrintf("aft RWQ");
 
+#if 0
 	if(res == OSEVENT_WAIT_TIMEOUT) {
 		printk(KERN_DEBUG"%s(%p/%s, %u): returning OSEVENT_WAIT_TIMEOUT\n", __FUNCTION__, hEvent, pEvent->name, timeout);
 		//{static int onlyonce; if(!onlyonce) { onlyonce=1; dump_stack(); } }
 	}
+#endif
 	return res;
 }
 

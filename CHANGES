@@ -1,3 +1,81 @@
+Sun May 09 2010 -
+	* Released hsfmodem-7.80.02.06.
+
+Sun May 09 2010 -
+	* Improved compatibility with newer kernels and distributions.
+
+Wed Oct 21 2009 -
+	* Released hsfmodem-7.80.02.05.
+
+Wed Oct 21 2009 -
+	* Improved compatibility with newer kernels and distributions.
+
+Thu Apr 23 2009 -
+	* Released hsfmodem-7.80.02.04.
+
+Thu Apr 23 2009 -
+	* Improved compatibility with newer kernels and distributions.
+
+Fri Feb 20 2009 -
+	* Released hsfmodem-7.80.02.03.
+
+Fri Feb 20 2009 -
+	* Added buildlogs to dumpdiag.
+	* Added modular HDA support and distinct snd-hda-codec-hsfmodem module.
+	* Added message in hsfstop to indicate successful operation.
+	* Improved uninstallation.
+
+Mon Jan 26 2009 -
+	* Released hsfmodem-7.80.02.02.
+
+Mon Jan 26 2009 -
+	* Improved compatibility with newer kernels and distributions.
+	* Added support for alsa-driver 1.0.19.
+	* Fixed spurious timer issue affecting HDA, USB and Yukon modems.
+
+Thu Dec 18 2008 -
+	* Released hsfmodem-7.80.02.01.
+
+Mon Dec 15 2008 -
+	* Improved compatibility with newer kernels and distributions.
+	* Merged latest Conexant modem code. (7.80.02)
+
+Wed Oct 01 2008 -
+	* Released hsfmodem-7.68.00.14.
+
+Wed Oct 01 2008 -
+	* Improved compatibility with newer kernels and distributions.
+	* Added rpmprecomp/debprecomp targets to easily generate pre-compiled
+	RPM/DEB pre-compiled packages for the currently running kernel.
+	* Added proper INF configuration for Bryce (14f1:2f40) modems.
+
+Tue Sep 09 2008 -
+	* Released hsfmodem-7.68.00.13.
+
+Mon Sep 08 2008 -
+	* Improved compatibility with newer kernels and distributions.
+	* Fixed hsfstop script.
+
+Fri Jul 18 2008 -
+	* Released hsfmodem-7.68.00.12.
+
+Wed Jul 16 2008 -
+	* Improved compatibility with newer kernels and distributions.
+	* Added support for newer Rainier modems (OEM).
+
+Fri Jun 20 2008 -
+	* Released hsfmodem-7.68.00.11.
+
+Fri Jun 20 2008 -
+	* Improved compatibility with newer kernels and distributions.
+
+Thu May 08 2008 -
+	* Released hsfmodem-7.68.00.10.
+
+Thu May 08 2008 -
+	* Improved compatibility with newer kernels and distributions.
+	* Silenced "returning OSEVENT_WAIT_TIMEOUT" messages.
+
 Mon Mar 24 2008 -
 	* Released hsfmodem-7.68.00.09.
 

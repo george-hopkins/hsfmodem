@@ -285,7 +285,7 @@ fi
 # Safe environment...
 PATH=/usr/sbin:/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin
 export PATH
-unset LANG; unset LOCALE; unset LC_TIME; unset LC_ALL
+unset LANG; unset LOCALE; unset LANGUAGE; unset LC_TIME; unset LC_ALL; unset LC_MESSAGES
 umask 022
 
 if check_tools gawk; then

@@ -42,6 +42,14 @@ MODULE_PARM_DESC(pmacftrmodemenable, "Enable internal modem if non-zero");
 //#undef dbg
 //#define dbg(format, arg...) { UINT32 dwTime = OsGetSystemTime(); printk(KERN_DEBUG "%07lu.%03lu: "__FILE__ ": " format "\n" , dwTime/1000, dwTime%1000, ## arg); }
 
+#ifndef info
+#define info(format, arg...) printk(KERN_INFO KBUILD_MODNAME ": " format "\n" , ## arg)
+#endif
+
+#ifndef warn
+#define warn(format, arg...) printk(KERN_WARNING KBUILD_MODNAME ": " format "\n" , ## arg)
+#endif
+
 #if !TARGET_HCF_FAMILY
 void *GetHwFuncs(void);
 #endif

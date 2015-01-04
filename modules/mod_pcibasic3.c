@@ -16,8 +16,8 @@
 static struct pci_device_id cnxthwpci_tbl[] =
 {
         {0x14F1, 0x2F80, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic3")}, /* Rainier */
-        {0x14F1, 0x2F81, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic3")}, /* Rainier OEM */
-        {0x14F1, 0x2F82, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic3")}, /* Rainier OEM */
+        {0x14F1, 0x2F81, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic3")}, /* Rainier B0 OEM */
+        {0x14F1, 0x2F82, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic3")}, /* Rainier A0 OEM */
         {0x14F1, 0x2F83, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CNXTHWCFG("pcibasic3")}, /* Rainier Voice */
 
         {0,}                    /* terminate list */

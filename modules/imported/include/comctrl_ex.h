@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2003-2004 Linuxant inc.
- * Copyright (c) 2001-2004 Conexant Systems, Inc.
+ * Copyright (c) 2003-2010 Linuxant inc.
+ * Copyright (c) 2001-2010 Conexant Systems, Inc.
  * 
  * 1.   Permitted use. Redistribution and use in source and binary forms,
  * without modification, are only permitted under the terms set forth herein.
@@ -51,19 +51,20 @@
  * decompile, or disassemble the portions of this software provided solely
  * in object form, nor attempt in any manner to obtain their source-code.
  * 
- * 6.   Redistribution. Permission to redistribute this software without
- * modification is granted, without prejudice to Linuxant's ability to obtain
- * reparation for any unauthorized distribution of previous versions of this
- * software released under prior LICENSE terms. Modification or redistribution
- * of this software under different terms requires explicit written approval
- * signed by an authorized Linuxant officer.
+ * 6.   Redistribution. Redistribution of this software is only permitted
+ * for exact copies (without modification) of versions explicitly marked
+ * and officially released by Linuxant with the word "free" in their name.
+ * Redistribution or disclosure of other versions, derivatives or license key
+ * information is expressly prohibited without explicit written approval signed
+ * by an authorized Linuxant officer.
  * 
  * 7.   Performance. V.92 modems are designed to be capable of receiving data at
  * up to 56Kbps with compatible phone line and server equipment, and transmitting
  * data at up to 31.2Kbps. V.90 modems are designed to be capable of receiving
  * data at up to 56 Kbps from a compatible service provider and transmitting data
  * at up to about 28.8 Kbps. Public networks currently limit download speeds to
- * about 53Kbps. Actual speeds vary and are often less than the maximum possible.
+ * about 53Kbps. The free version of the drivers is limited to 14.4Kbps.
+ * Actual speeds vary and are often less than the maximum possible.
  * 
  * 
  */
@@ -248,8 +249,8 @@ Port Event Handler - used in Configure(COMCTRL_CONFIG_EVENT_HANDLER)
 */
 typedef struct tagPORT_EVENT_HANDLER
 {
-    void    (*pfnCallback) (PVOID pRef, UINT32 dwEventMask) __shimcall__;
     PVOID   pRef;
+    void    (*pfnCallback) (PVOID pRef, UINT32 dwEventMask) __shimcall__;
 
 } PORT_EVENT_HANDLER, *PPORT_EVENT_HANDLER;
 

@@ -2445,7 +2445,7 @@ int snd_hda_resume_ctls(struct hda_codec *codec, struct snd_kcontrol_new *knew)
 {
 	return 0;
 }
-#warning Reduced HDA suspend support, will be solved in a future release
+#warning Reduced HDA suspend support, installation of alsa-driver-linuxant available from www.linuxant.com/alsa-driver is recommended
 #endif
 
 /**

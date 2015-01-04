@@ -23,9 +23,6 @@ MODULE_INFO(supported, "yes");
 
 void *GetHwFuncs(void);
 
-static int cnxthwhda_suspend(void *devnode, pm_message_t state);
-static int cnxthwhda_resume(void *devnode);
-
 #if 0
 static int __devinit cnxthwhda_probe(struct hda_interface *intf, const struct hda_device_id *id);
 static void __devexit cnxthwhda_disconnect(struct hda_interface *intf);
