@@ -83,6 +83,9 @@
 #endif
 #include <linux/serial_core.h>
 #endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+#include <linux/seq_file.h>
+#endif
 
 #include "oscompat.h"
 #include "osservices.h"
@@ -153,6 +156,9 @@ struct cnxt_serial_inst {
 #ifdef CONFIG_PROC_FS
 static struct proc_dir_entry *cnxt_serial_proc_dir;
 static struct proc_dir_entry *cnxt_serial_flush_nvm;
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) )
+
+#endif
 #endif
 
 static struct cnxt_serial_inst cnxt_serial_inst[NR_PORTS];
@@ -972,12 +978,37 @@ static struct uart_driver cnxt_reg = {
 
 #ifdef CONFIG_PROC_FS
 
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) )
+static int cnxt_get_hwinst(struct seq_file *s, void *data)
+{
+    struct cnxt_serial_inst *inst = (struct cnxt_serial_inst *)data;
+    
+    // FIXME: Check s->size
+    seq_printf(s, "%d-%s\n", inst->devnode->hwInstNum, inst->devnode->hwInstName);
+
+    return 0;
+}
+
+static int cnxt_proc_open_hwinst(struct inode *inode, struct file *filp)
+{
+    return single_open(filp, cnxt_get_hwinst, NULL);
+}
+
+static const struct file_operations cnxt_proc_ops_hwinst = {
+    .owner = THIS_MODULE,
+    .open = cnxt_proc_open_hwinst,
+    .llseek = seq_lseek,
+    .read = seq_read,
+    .release = single_release,
+};
+
+#else
 static int cnxt_get_hwinst(char *buf, char **start, off_t offset, int length, int *eof, void *data)
 {
     struct cnxt_serial_inst *inst = (struct cnxt_serial_inst *)data;
 
     if(offset)
-	return 0;
+	    return 0;
 
     if(length > PAGE_SIZE)
 	length = PAGE_SIZE;
@@ -986,7 +1017,30 @@ static int cnxt_get_hwinst(char *buf, char **start, off_t offset, int length, in
     buf[length-1] = '\0';
     return strlen(buf);
 }
+#endif
 
+static int cnxt_flush_nvm(struct file *file, const char __user *buffer, unsigned long count, void *data)
+{
+	//printk(KERN_DEBUG "%s: called\n", __FUNCTION__);
+
+	NVM_WriteFlushList(TRUE);
+
+	return count;
+}
+
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) )
+static const struct file_operations cnxt_proc_ops_flushnvm = {
+    .owner = THIS_MODULE,
+    .write = cnxt_flush_nvm
+};
+#endif
+
+
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) )
+
+// TODO
+
+#else
 static int cnxt_get_hwprofile(char *buf, char **start, off_t offset, int length, int *eof, void *data)
 {
     struct cnxt_serial_inst *inst = (struct cnxt_serial_inst *)data;
@@ -1050,14 +1104,7 @@ static int cnxt_get_lastcallstatus(char *page, char **start, off_t offset, int l
 }
 #endif /* COMCTRL_MONITOR_POUND_UG_SUPPORT */
 
-static int cnxt_flush_nvm(struct file *file, const char __user *buffer, unsigned long count, void *data)
-{
-	//printk(KERN_DEBUG "%s: called\n", __FUNCTION__);
-
-	NVM_WriteFlushList(TRUE);
-
-	return count;
-}
+#endif
 
 #endif /* CONFIG_PROC_FS */
 
@@ -1249,13 +1296,22 @@ int cnxt_serial_add(POS_DEVNODE devnode, unsigned int iobase, void *membase, uns
 	snprintf(dirname, sizeof(dirname), "%d", i);
 	inst->proc_unit_dir = proc_mkdir(dirname, cnxt_serial_proc_dir);
 	if(inst->proc_unit_dir) {
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) )
+	    inst->proc_hwinst = proc_create_data("hwinst", 0, inst->proc_unit_dir, &cnxt_proc_ops_hwinst, inst);
+	    //inst->proc_hwprofile = proc_create_data("hwprofile", 0, inst->proc_unit_dir, &cnxt_proc_ops_hwprofile, inst);
+	    //inst->proc_hwrevision = proc_create_data("hwrevision", 0, inst->proc_unit_dir, &cnxt_proc_ops_hwrevision, inst);
+#ifdef COMCTRL_MONITOR_POUND_UG_SUPPORT
+	    //inst->proc_lastcallstatus = proc_create_data("lastcallstatus", 0, inst->proc_unit_dir, &cnxt_proc_ops_lastcallstatus, inst);
+#endif
+#else
 	    inst->proc_hwinst = create_proc_read_entry("hwinst", 0, inst->proc_unit_dir, cnxt_get_hwinst, inst);
 	    inst->proc_hwprofile = create_proc_read_entry("hwprofile", 0, inst->proc_unit_dir, cnxt_get_hwprofile, inst);
 	    inst->proc_hwrevision = create_proc_read_entry("hwrevision", 0, inst->proc_unit_dir, cnxt_get_hwrevision, inst);
 #ifdef COMCTRL_MONITOR_POUND_UG_SUPPORT
 	    inst->proc_lastcallstatus = create_proc_read_entry("lastcallstatus", 0, inst->proc_unit_dir, cnxt_get_lastcallstatus, inst);
-	}
 #endif
+#endif
+	}
     }
 #endif /* CONFIG_PROC_FS */
 
@@ -1281,41 +1337,45 @@ int cnxt_serial_remove(POS_DEVNODE devnode)
     unsigned long flags;
 
     if(!devnode) {
-	return -EINVAL;
+	    return -EINVAL;
     }
 
     for(i = 0; i < NR_PORTS; i++) {
-	spin_lock_irqsave(&cnxt_serial_inst[i].lock, flags);
-	if(cnxt_serial_inst[i].devnode == devnode) {
-	    inst = &cnxt_serial_inst[i];
+	    spin_lock_irqsave(&cnxt_serial_inst[i].lock, flags);
+	    if(cnxt_serial_inst[i].devnode == devnode) {
+	        inst = &cnxt_serial_inst[i];
+	        spin_unlock_irqrestore(&cnxt_serial_inst[i].lock, flags);
+	        break;
+	    }
 	    spin_unlock_irqrestore(&cnxt_serial_inst[i].lock, flags);
-	    break;
-	}
-	spin_unlock_irqrestore(&cnxt_serial_inst[i].lock, flags);
     }
 
     if(!inst) {
-	return -EINVAL;
+	    return -EINVAL;
     }
 
     inst->mctrl_flags &= ~TIOCM_DSR;
 
 #ifdef CONFIG_PROC_FS
 #ifdef COMCTRL_MONITOR_POUND_UG_SUPPORT
-    if(inst->proc_lastcallstatus)
-	remove_proc_entry("lastcallstatus", inst->proc_unit_dir);
+    if(inst->proc_lastcallstatus) {
+	    remove_proc_entry("lastcallstatus", inst->proc_unit_dir);
+    }
 #endif
-    if(inst->proc_hwrevision)
-	remove_proc_entry("hwrevision", inst->proc_unit_dir);
-    if(inst->proc_hwprofile)
-	remove_proc_entry("hwprofile", inst->proc_unit_dir);
-    if(inst->proc_hwinst)
-	remove_proc_entry("hwinst", inst->proc_unit_dir);
+    if(inst->proc_hwrevision) {
+	    remove_proc_entry("hwrevision", inst->proc_unit_dir);
+    }
+    if(inst->proc_hwprofile) {
+	    remove_proc_entry("hwprofile", inst->proc_unit_dir);
+    }
+    if(inst->proc_hwinst) {
+	    remove_proc_entry("hwinst", inst->proc_unit_dir);
+    }
     if(inst->proc_unit_dir) {
-	char dirname[10];
+	    char dirname[10];
 
-	snprintf(dirname, sizeof(dirname), "%d", i);
-	remove_proc_entry(dirname, cnxt_serial_proc_dir);
+	    snprintf(dirname, sizeof(dirname), "%d", i);
+	    remove_proc_entry(dirname, cnxt_serial_proc_dir);
     }
 #endif /* CONFIG_PROC_FS */
 
@@ -1323,14 +1383,14 @@ int cnxt_serial_remove(POS_DEVNODE devnode)
 
     if(inst->hcomctrl) {
         devnode->hcomctrl = NULL;
-	ComCtrl_Close(inst->hcomctrl);
-	ComCtrl_Destroy(inst->hcomctrl);
-	inst->hcomctrl = NULL;
+	    ComCtrl_Close(inst->hcomctrl);
+	    ComCtrl_Destroy(inst->hcomctrl);
+	    inst->hcomctrl = NULL;
     }
 
     if(inst->typestr) {
-	kfree(inst->typestr);
-	inst->typestr = NULL;
+	    kfree(inst->typestr);
+	    inst->typestr = NULL;
     }
 
     spin_lock_irqsave(&inst->lock, flags);
@@ -1384,9 +1444,13 @@ cnxt_serial_init(void)
 	cnxt_serial_proc_dir = proc_mkdir(PROC_PREFIX CNXTTARGET, proc_root_driver);
 
 	if (cnxt_serial_proc_dir) {
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) )
+        cnxt_serial_flush_nvm = proc_create("flush_nvm", 0, cnxt_serial_proc_dir, &cnxt_proc_ops_flushnvm);
+#else
 		cnxt_serial_flush_nvm = create_proc_entry("flush_nvm", 0, cnxt_serial_proc_dir);
 		if (cnxt_serial_flush_nvm)
 			cnxt_serial_flush_nvm->write_proc = cnxt_flush_nvm;
+#endif
 	}
 #endif
 
