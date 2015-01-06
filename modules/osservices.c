@@ -58,6 +58,15 @@
 #include <linux/completion.h>
 #endif
 
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0) )
+#include <linux/kthread.h>
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0) )
+#include <linux/sched/prio.h>
+#else
+#include <linux/sched/rt.h>
+#endif
+#endif
+
 #ifdef for_each_process
 #define sigmask_lock sighand->siglock
 #define recalc_sigpending_curtask(t) recalc_sigpending()
@@ -414,6 +423,116 @@ INT32 OsAtomicDecrement (PINT32 address)
     return amount;
 }
 
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0) )
+
+struct _OSTHRD {
+    int pid;
+    struct kthread_worker kworker;
+    struct task_struct *kworker_task;
+};
+
+struct kwork_data {
+    struct kthread_work work;
+    void (*func)(void *);
+    void* data;
+};
+
+static void
+OsThreadStart(OSTHRD *osthrd, const char *name, BOOLEAN highestprio)
+{
+    struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
+    
+	memset(osthrd, 0, sizeof(*osthrd));
+	
+	init_kthread_worker(&osthrd->kworker);
+	osthrd->kworker_task = kthread_run(kthread_worker_fn, &osthrd->kworker, "k%sd/%s", CNXTTARGET, name);
+	
+	if (IS_ERR(osthrd->kworker_task)) {
+	    return;
+    }
+    
+    osthrd->pid = osthrd->kworker_task->pid;
+    
+    if(highestprio) {
+        sched_setscheduler(osthrd->kworker_task, SCHED_FIFO, &param);
+    }
+}
+
+static void
+OsThreadStop(OSTHRD *osthrd)
+{
+    if (!IS_ERR(osthrd->kworker_task)) {
+        kthread_stop(osthrd->kworker_task);
+    }
+}
+
+__shimcall__
+POSTHRD
+OsThreadCreate(const char *name, BOOLEAN highestprio, int *pid)
+{
+	OSTHRD *osthrd = OsAllocate(sizeof(OSTHRD));
+
+	if(osthrd) {
+		OsThreadStart(osthrd, name, highestprio);
+		if(pid)
+			*pid = osthrd->pid;
+	}
+
+	return osthrd;
+}
+
+__shimcall__
+void
+OsThreadDestroy(POSTHRD osthrd)
+{
+	OsThreadStop(osthrd);
+	OsFree(osthrd);
+}
+
+static void
+unwrap_kwork(struct kthread_work *work)
+{
+    struct kwork_data *w = container_of(work, struct kwork_data, work);
+    w->func(w->data);
+}
+
+__shimcall__
+void OsThreadScheduleInit(HOSSCHED hWorkStorage, __kernelcall__ void (*func)(void *), void * data)
+{
+	struct kwork_data *w = (struct kwork_data *)hWorkStorage;
+    init_kthread_work(&w->work, unwrap_kwork);
+    w->func = func;
+    w->data = data;
+}
+
+__shimcall__
+int OsThreadSchedule(POSTHRD osthrd, HOSSCHED hWorkStorage)
+{
+	bool ret;
+	struct kwork_data *w = (struct kwork_data *)hWorkStorage;
+
+	if(!osthrd || !IS_ERR(osthrd->kworker_task)) {
+		printk(KERN_DEBUG "%s: no thread %p\n", __FUNCTION__, osthrd);
+		return 0;
+	}
+
+	OsModuleUseCountInc();
+	ret = queue_kthread_work(&osthrd->kworker, &w->work);
+	if(!ret) {
+		OsModuleUseCountDec();
+	}
+
+	return ret;
+}
+
+__shimcall__
+void OsThreadScheduleDone(void)
+{
+    OsModuleUseCountDec();
+}
+
+#else
+
 struct _OSTHRD {
 	const char *name;
 	int pid;
@@ -459,6 +578,7 @@ static int cnxt_thread(OSTHRD *osthrd)
 	current->flags |= PF_IOTHREAD;
 #endif
 #endif
+
 #ifdef PF_NOFREEZE
 	current->flags |= PF_NOFREEZE;
 #endif
@@ -727,6 +847,8 @@ void OsThreadScheduleDone(void)
 {
     OsModuleUseCountDec();
 }
+
+#endif
 
 /********************************************************************/
 
@@ -1298,9 +1420,14 @@ int OsInit(void)
 #endif
 #endif
 
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0) )
+    if(sizeof(OSSCHED) <= sizeof(struct kwork_data)) {
+        OsErrorPrintf("OSSCHED too small (%d < %d)\n", sizeof(OSSCHED), sizeof(struct kwork_data));
+#else
     if(sizeof(OSSCHED) <= sizeof(struct tq_struct)) {
-	OsErrorPrintf("OSSCHED too small (%d < %d)\n", sizeof(OSSCHED), sizeof(struct tq_struct));
-	return -ENOSPC;
+        OsErrorPrintf("OSSCHED too small (%d < %d)\n", sizeof(OSSCHED), sizeof(struct tq_struct));
+#endif
+        return -ENOSPC;
     }
 
     return 0;
