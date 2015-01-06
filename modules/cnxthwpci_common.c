@@ -26,6 +26,11 @@ __shimcall__
 void *GetHwFuncs(void);
 #endif
 
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) )
+#define __devinit
+#define __devexit
+#endif
+
 static int __devinit cnxthwpci_probe (struct pci_dev *pdev,
                                          const struct pci_device_id *ent)
 {
