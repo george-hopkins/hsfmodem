@@ -122,7 +122,9 @@ static int errno;
 #include <linux/spinlock.h>
 #include <linux/list.h>
 #include <asm/bitops.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
 #include <asm/system.h>
+#endif
 
 /*
  * New proposed "bottom half" handlers:
@@ -628,7 +630,11 @@ typedef u32 pm_message_t;
 #endif
 
 #ifdef FOUND_TOUCH_ATIME
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0) )
+#define TOUCH_ATIME(file) touch_atime(&(file)->f_path);
+#else
 #define TOUCH_ATIME(file) touch_atime((file)->f_vfsmnt,(file)->f_dentry);
+#endif
 #else
 #define TOUCH_ATIME(file) update_atime((file)->f_dentry->d_inode);
 #endif

@@ -22,7 +22,11 @@
 #include <asm/uaccess.h>
 
 #ifdef FOUND_CURRENT_CRED
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0) )
+static int set_current_fsuid(kuid_t fsuid)
+#else
 static int set_current_fsuid(uid_t fsuid)
+#endif
 {
 	struct cred *new;
 
@@ -40,7 +44,11 @@ __shimcall__
 FILE *
 OsFOpen (const char *path, const char *mode, int *errp)
 {
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0) )
+	kuid_t origfsuid;
+#else
 	uid_t origfsuid;
+#endif
 	FILE *filp;
 	int error = 0;
 	int flags, creatmode = 0, do_trunc = 0;
@@ -81,7 +89,11 @@ OsFOpen (const char *path, const char *mode, int *errp)
 again:
 #ifdef FOUND_CURRENT_CRED
 	origfsuid = current_fsuid();
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0) )
+	error = set_current_fsuid(make_kuid(current_user_ns(), 0));
+#else
 	error = set_current_fsuid(0);
+#endif
 	if (error) {
 		filp = NULL;
 		goto out;

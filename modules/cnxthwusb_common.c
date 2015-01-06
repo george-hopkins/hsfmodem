@@ -41,6 +41,9 @@ MODULE_PARM_DESC(pmacftrmodemenable, "Enable internal modem if non-zero");
 
 //#undef dbg
 //#define dbg(format, arg...) { UINT32 dwTime = OsGetSystemTime(); printk(KERN_DEBUG "%07lu.%03lu: "__FILE__ ": " format "\n" , dwTime/1000, dwTime%1000, ## arg); }
+#ifndef dbg
+#define dbg(format, arg...) printk(KERN_DEBUG KBUILD_MODNAME ": " format "\n" , ## arg)
+#endif
 
 #ifndef info
 #define info(format, arg...) printk(KERN_INFO KBUILD_MODNAME ": " format "\n" , ## arg)
@@ -50,8 +53,17 @@ MODULE_PARM_DESC(pmacftrmodemenable, "Enable internal modem if non-zero");
 #define warn(format, arg...) printk(KERN_WARNING KBUILD_MODNAME ": " format "\n" , ## arg)
 #endif
 
+#ifndef err
+#define err(format, arg...) printk(KERN_ERR KBUILD_MODNAME ": " format "\n" , ## arg)
+#endif
+
 #if !TARGET_HCF_FAMILY
 void *GetHwFuncs(void);
+#endif
+
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0) )
+#define __devinit
+#define __devexit
 #endif
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0) )

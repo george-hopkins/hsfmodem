@@ -40,6 +40,9 @@
 //#undef dbg
 //#define dbg(format, arg...) { UINT32 dwTime = OsGetSystemTime(); printk(KERN_DEBUG "%07lu.%03lu: "__FILE__ ": " format "\n" , dwTime/1000, dwTime%1000, ## arg); }
 //#define dbg(format, arg...) do {} while (0)
+#ifndef dbg
+#define dbg(format, arg...) printk(KERN_DEBUG KBUILD_MODNAME ": " format "\n" , ## arg)
+#endif
 
 #ifndef info
 #define info(format, arg...) printk(KERN_INFO KBUILD_MODNAME ": " format "\n" , ## arg)
@@ -47,6 +50,10 @@
 
 #ifndef warn
 #define warn(format, arg...) printk(KERN_WARNING KBUILD_MODNAME ": " format "\n" , ## arg)
+#endif
+
+#ifndef err
+#define err(format, arg...) printk(KERN_ERR KBUILD_MODNAME ": " format "\n" , ## arg)
 #endif
 
 #define Working TRUE
