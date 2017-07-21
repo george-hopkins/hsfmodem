@@ -11,7 +11,9 @@
 #include "framewrk.h"
 #include "osservices.h"
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0)
+#include <asm/fpu/api.h>
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,0)
 #include <asm/i387.h>
 #endif
 
@@ -26,10 +28,14 @@
 
 typedef struct {
 	unsigned long used;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,2,0)
+    union fpregs_state i387;
+#else
 #ifdef FOUND_THREAD_XSTATE
 	union thread_xstate i387;
 #else
 	union i387_union i387;
+#endif
 #endif
 	unsigned int cr0;
 } fpstate_t;
