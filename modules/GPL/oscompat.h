@@ -692,6 +692,10 @@ typedef struct uart_state uart_info_t;
 typedef struct uart_info uart_info_t;
 #endif
 
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0) )
+#define rdtscl(low)	((low) = (u32)rdtsc())
+#endif
+
 #if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0) )
 #define f_dentry f_path.dentry
 #endif
