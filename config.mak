@@ -102,7 +102,7 @@ ALL_IN_GEN = $(patsubst %.in, %, $(ALL_IN))
 
 %: %.in
 	sed \
-		-e "s!@DATE@!`date \"+%a, %d %b %Y %T %z\"`!g" \
+		-e "s!@DATE@!`LC_TIME=C date \"+%a, %d %b %Y %T %z\"`!g" \
 		-e 's!@CNXTDRIVER@!$(CNXTDRIVER)!g' \
 		-e 's!@CNXTDRVDSC@!$(CNXTDRVDSC)!g' \
 		-e 's!@CNXTTARGET@!$(CNXTTARGET)!g' \

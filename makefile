@@ -273,7 +273,7 @@ debian/README.tmp: README
 debian/%: debian/%.in debian/README.tmp
 	( \
 	  sed -n \
-		-e "s!@DATE@!`date \"+%a, %d %b %Y %T %z\"`!g" \
+		-e "s!@DATE@!`LC_TIME=C date \"+%a, %d %b %Y %T %z\"`!g" \
 		-e 's!@CNXTDRIVER@!$(CNXTDRIVER)!g' \
 		-e 's!@CNXTDRVDSC@!$(CNXTDRVDSC)!g' \
 		-e 's!@CNXTTARGET@!$(CNXTTARGET)!g' \
