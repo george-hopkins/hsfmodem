@@ -23,7 +23,7 @@ binary-indep: checkroot build
 binary-arch: checkroot build
 	$(checkdir)
 	-rm -rf debian/tmp
-	install -d debian/tmp
+	install -d debian/tmp/DEBIAN
 ifneq ($(TARGET_KERNEL),)
 	@MODS_DIR=binaries/linux-$(TARGET_KERNEL) ; \
 	case "$(TARGET_KERNEL)" in \
