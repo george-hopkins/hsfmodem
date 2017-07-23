@@ -120,7 +120,7 @@ TARPKG=$(CNXTTARGET)modem-$(CNXTLINUXVERSION).tar.gz
 tardist: clean
 	$(MAKE) $(TARPKG)
 
-CNXTTEMPDIST:=/var/run/$(CNXTTARGET)dist-$(shell echo $$$$)/$(CNXTTARGET)modem-$(CNXTLINUXVERSION)
+CNXTTEMPDIST:=/tmp/$(CNXTTARGET)dist-$(shell echo $$$$)/$(CNXTTARGET)modem-$(CNXTLINUXVERSION)
 
 $(TARPKG): $(CNXTTARGET)modem.spec
 	rm -rf $(CNXTTEMPDIST)
