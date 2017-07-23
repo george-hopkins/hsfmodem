@@ -817,7 +817,7 @@ NVM_ReadCountry(POS_DEVNODE pDevNode, BYTE daaType, int countryt35, CtryPrmsStru
     UINT8 Reference = 0xFF;
 	char *nameTxLevel, *nameRelays;
 
-    memset(ctryPrms, 0, sizeof(ctryPrms));
+    memset(ctryPrms, 0, sizeof(CtryPrmsStruct));
 
     //printk(KERN_DEBUG "%s: pDevNode=%p countryt35=%x daaType=%d\n", __FUNCTION__, pDevNode, countryt35, daaType);
 
