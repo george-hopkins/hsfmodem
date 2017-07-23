@@ -1318,7 +1318,7 @@ binary_modules_avail()
 
 module_full_path()
 {
-	module_path="`modprobe -l $1`"
+	module_path="`modinfo -F filename $1`"
 
 	if [ -z "${module_path}" ]; then
 		return
