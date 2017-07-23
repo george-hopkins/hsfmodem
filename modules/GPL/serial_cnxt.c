@@ -1031,7 +1031,11 @@ static int cnxt_get_hwinst(char *buf, char **start, off_t offset, int length, in
 }
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+static ssize_t cnxt_flush_nvm(struct file *file, const char __user *buffer, size_t count, loff_t *pos)
+#else
 static int cnxt_flush_nvm(struct file *file, const char __user *buffer, unsigned long count, void *data)
+#endif
 {
 	//printk(KERN_DEBUG "%s: called\n", __FUNCTION__);
 
