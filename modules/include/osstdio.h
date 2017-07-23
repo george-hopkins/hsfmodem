@@ -21,7 +21,7 @@ struct file;
 
 typedef struct file FILE;
 
-#ifndef FOUND_SEEK_MODES
+#ifndef SEEK_SET
 #define SEEK_SET		0x00000000
 #define SEEK_CUR		0x00000001
 #define SEEK_END		0x00000002
