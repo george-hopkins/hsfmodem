@@ -1,9 +1,18 @@
+*.cmd
+*.ko
+*.mod
+*.mod.c
+*.o
+
 /*.tar.gz
 /build
 
 /debian/*
 !/debian/compat
 !/debian/*.in
+
+/modules/modules.order
+/modules/Module.symvers
 
 /nvm/cvt/
 
