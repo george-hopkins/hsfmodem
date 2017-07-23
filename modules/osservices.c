@@ -11,10 +11,6 @@
 #define __KERNEL_SYSCALLS__
 #endif
 
-#ifndef FOUND_KERNEL_EXECVE
-#define STATIC_ERRNO
-#endif
-
 #define STATIC_TQUEUE_LOCK
 
 #include "oscompat.h"
@@ -852,7 +848,7 @@ void OsThreadScheduleDone(void)
 
 /********************************************************************/
 
-#ifndef FOUND_KERNEL_EXECVE
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 19)
 #ifndef __x86_64__
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 8))
 static inline _syscall3(pid_t,waitpid,pid_t,pid,int *,wait_stat,int,options)
@@ -945,7 +941,7 @@ static int OsExec(void *execargs)
 	return err;
 }
 #endif /* __x86_64__ */
-#endif /* !FOUND_KERNEL_EXECVE */
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 19) */
 
 __shimcall__
 int

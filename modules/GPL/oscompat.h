@@ -74,7 +74,7 @@ extern "C"
 #endif
 #include <linux/types.h>
 
-#if defined(STATIC_ERRNO)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 19)
 #ifndef _LINUX_UNISTD_H_
 #define _LINUX_UNISTD_H_
 #endif
