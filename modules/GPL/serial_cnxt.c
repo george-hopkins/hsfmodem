@@ -264,7 +264,11 @@ cnxt_rx_chars(struct cnxt_serial_inst *inst)
 	    inst->evt_rxovrn = 0;
 	    inst->uart_port->icount.overrun++;
 #ifdef FOUND_TTY_NEW_API
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,9,0)
+	    tty_insert_flip_char(tty->port, 0, TTY_OVERRUN);
+#else
 	    tty_insert_flip_char(tty, 0, TTY_OVERRUN);
+#endif
 #else
 	    *tty->flip.flag_buf_ptr++ = TTY_OVERRUN;
 	    *tty->flip.char_buf_ptr++ = 0;
@@ -283,7 +287,11 @@ cnxt_rx_chars(struct cnxt_serial_inst *inst)
 	    flag = TTY_NORMAL;
 
 #ifdef FOUND_TTY_NEW_API
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,9,0)
+	tty_insert_flip_char(tty->port, inst->readbuf[inst->readoffset++], flag);
+#else
 	tty_insert_flip_char(tty, inst->readbuf[inst->readoffset++], flag);
+#endif
 #else
 	*tty->flip.flag_buf_ptr++ = flag;
 	*tty->flip.char_buf_ptr++ = inst->readbuf[inst->readoffset++];
@@ -291,7 +299,11 @@ cnxt_rx_chars(struct cnxt_serial_inst *inst)
 #endif
     }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,9,0)
+    tty_flip_buffer_push(tty->port);
+#else
     tty_flip_buffer_push(tty);
+#endif
     return;
 }
 
