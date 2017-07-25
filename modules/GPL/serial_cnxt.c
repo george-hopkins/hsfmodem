@@ -1003,7 +1003,7 @@ static int cnxt_get_hwinst(struct seq_file *s, void *data)
 
 static int cnxt_proc_open_hwinst(struct inode *inode, struct file *filp)
 {
-    return single_open(filp, cnxt_get_hwinst, NULL);
+    return single_open(filp, cnxt_get_hwinst, PDE_DATA(inode));
 }
 
 static const struct file_operations cnxt_proc_ops_hwinst = {
