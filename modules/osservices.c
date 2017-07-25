@@ -507,7 +507,7 @@ int OsThreadSchedule(POSTHRD osthrd, HOSSCHED hWorkStorage)
 	bool ret;
 	struct kwork_data *w = (struct kwork_data *)hWorkStorage;
 
-	if(!osthrd || !IS_ERR(osthrd->kworker_task)) {
+	if(!osthrd || IS_ERR(osthrd->kworker_task)) {
 		printk(KERN_DEBUG "%s: no thread %p\n", __FUNCTION__, osthrd);
 		return 0;
 	}
